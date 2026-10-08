@@ -8,7 +8,7 @@
     {
       "id": "test-001",
       "text": "Threads APIとCodexを使った自動投稿のテストです。",
-      "approved": false
+      "approved": true
     }
   ]
 }
