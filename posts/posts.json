@@ -4,6 +4,11 @@
       "id": "example-001",
       "text": "これは投稿案です。内容を確認してから承認してください。",
       "approved": false
+    },
+    {
+      "id": "test-001",
+      "text": "Threads APIとCodexを使った自動投稿のテストです。",
+      "approved": false
     }
   ]
 }
