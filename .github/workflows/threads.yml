@@ -1,0 +1,46 @@
+name: Threads manual operation
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [check, publish]
+        default: check
+        description: Connection check or explicitly approved publication
+      post_id:
+        type: string
+        default: ''
+        description: Post ID to publish
+      approved_post_id:
+        type: string
+        default: ''
+        description: Enter the same post ID to approve actual publication
+permissions:
+  contents: write
+concurrency:
+  group: threads-publication
+  cancel-in-progress: false
+jobs:
+  threads:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Tests
+        run: python -m unittest discover -s tests -v
+      - name: Configure history author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Connection check or approved publication
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_PUBLISH_ENABLED: ${{ vars.THREADS_PUBLISH_ENABLED }}
+          OPERATION: ${{ inputs.operation }}
+          POST_ID: ${{ inputs.post_id }}
+          APPROVED_POST_ID: ${{ inputs.approved_post_id }}
+        run: python -m threads_publisher "$OPERATION" --post-id "$POST_ID" --approved-post-id "$APPROVED_POST_ID" --persist-git
