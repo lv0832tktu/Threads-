@@ -1,0 +1,88 @@
+name: Threads Plus operation (publication disabled by default)
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [plan, insights, report, token-status]
+        default: plan
+        description: Offline plan or free Threads API analysis; never paid AI API
+permissions:
+  contents: read
+concurrency:
+  group: threads-publication
+  cancel-in-progress: false
+jobs:
+  plan:
+    if: github.event_name == 'workflow_dispatch' && (inputs.operation == 'plan' || inputs.operation == 'token-status')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Private schedule plan
+        if: inputs.operation == 'plan'
+        env:
+          THREADS_SCHEDULE_JSON: ${{ secrets.THREADS_SCHEDULE_JSON }}
+        run: python -m threads_publisher schedule --dry-run --private-state --from-secret
+      - name: Expiry plan
+        if: inputs.operation == 'token-status'
+        run: python -m threads_publisher token-status
+  operations:
+    if: >-
+      (github.event_name == 'schedule' &&
+       (vars.THREADS_AUTO_PUBLISH_ENABLED == 'true' || vars.THREADS_INSIGHTS_ENABLED == 'true')) ||
+      (github.event_name == 'workflow_dispatch' && (inputs.operation == 'insights' || inputs.operation == 'report'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install free encryption dependency
+        run: python -m pip install -r requirements-private.txt
+      - name: Offline tests
+        run: python -m unittest discover -s tests -v
+      - name: Configure state author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Collect Insights into encrypted state
+        if: vars.THREADS_INSIGHTS_ENABLED == 'true' && (github.event_name == 'schedule' || inputs.operation == 'insights')
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
+        run: python -m threads_publisher insights --private-state --backfill-metadata --persist-git
+      - name: Generate weekly comparison report without AI API
+        if: vars.THREADS_INSIGHTS_ENABLED == 'true' || inputs.operation == 'report'
+        env:
+          THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = schedule ]; then
+            python -m threads_publisher report --private-state --persist-git --weekly-only
+          else
+            python -m threads_publisher report --private-state --persist-git
+          fi
+      - name: Publish only due approved Secret-based posts
+        if: github.event_name == 'schedule' && vars.THREADS_AUTO_PUBLISH_ENABLED == 'true'
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
+          THREADS_SCHEDULE_JSON: ${{ secrets.THREADS_SCHEDULE_JSON }}
+          THREADS_PUBLISH_ENABLED: ${{ vars.THREADS_PUBLISH_ENABLED }}
+          THREADS_AUTO_PUBLISH_ENABLED: ${{ vars.THREADS_AUTO_PUBLISH_ENABLED }}
+        run: python -m threads_publisher schedule --private-state --from-secret --persist-git
+      - name: Failure guidance
+        if: failure()
+        run: echo 'Operation failed. Inspect permissions and private history. Never reset encryption keys or retry uncertain publication blindly.' >> "$GITHUB_STEP_SUMMARY"

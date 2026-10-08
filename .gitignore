@@ -7,3 +7,10 @@ Thumbs.db
 
 __pycache__/
 *.py[cod]
+posts/*.json.lock
+config/*.json.lock
+state/*.lock
+.venv*/
+.streamlit/secrets.toml
+
+/private/

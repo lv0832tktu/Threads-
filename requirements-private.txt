@@ -1,0 +1,2 @@
+# Free local dependency for authenticated encryption; no external service.
+cryptography==46.0.5

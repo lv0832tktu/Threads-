@@ -16,31 +16,57 @@ on:
         default: ''
         description: Enter the same post ID to approve actual publication
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: threads-publication
   cancel-in-progress: false
 jobs:
-  threads:
+  check:
+    if: inputs.operation == 'check'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, Node.js 24
         with:
           ref: main
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6, Node.js 24
         with:
           python-version: '3.12'
+      - name: Install free test dependency
+        run: python -m pip install -r requirements-private.txt
+      - name: Tests
+        run: python -m unittest discover -s tests -v
+      - name: Connection check
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+        run: python -m threads_publisher check
+  publish:
+    if: inputs.operation == 'publish'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install free test dependency
+        run: python -m pip install -r requirements-private.txt
       - name: Tests
         run: python -m unittest discover -s tests -v
       - name: Configure history author
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-      - name: Connection check or approved publication
+      - name: Approved publication
         env:
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           THREADS_PUBLISH_ENABLED: ${{ vars.THREADS_PUBLISH_ENABLED }}
-          OPERATION: ${{ inputs.operation }}
           POST_ID: ${{ inputs.post_id }}
           APPROVED_POST_ID: ${{ inputs.approved_post_id }}
-        run: python -m threads_publisher "$OPERATION" --post-id "$POST_ID" --approved-post-id "$APPROVED_POST_ID" --persist-git
+        run: python -m threads_publisher publish --post-id "$POST_ID" --approved-post-id "$APPROVED_POST_ID" --persist-git
+      - name: Failure guidance
+        if: failure()
+        run: echo 'Publication failed or is uncertain. Inspect pending history before retrying.' >> "$GITHUB_STEP_SUMMARY"

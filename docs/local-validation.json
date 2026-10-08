@@ -1,0 +1,34 @@
+{
+  "local_unittest": {
+    "passed": 69,
+    "failed": 0,
+    "command": "python -m unittest discover -s tests -v (venv with free cryptography installed)"
+  },
+  "workflows": "actionlint v1.7.7 passed for all 3 workflows",
+  "dashboard": {
+    "version": "1.65.0",
+    "functional_render": "5 tabs and existing 2 drafts / 1 published history rendered",
+    "http_health": "passed on loopback, stopped after validation",
+    "public_binding": "rejected"
+  },
+  "existing_data": "posts/posts.json and state/history.sqlite3 byte-for-byte preserved",
+  "external_verification": {
+    "threads": "not executed",
+    "ai_provider": "not executed",
+    "github_actions": "not executed",
+    "github_push": "See Git history / final response for branch push result"
+  },
+  "defaults": {
+    "auto_publish_enabled": false,
+    "ai_enabled": false
+  },
+  "workflow_mode": "ChatGPT Plus only; weekly import, report and encrypted Secret-based reservations verified",
+  "market": {
+    "tests": 8,
+    "live_requests": "not executed",
+    "official_reference": "Meta official sample 854fc140a37e20f6a7086cf3ee0065f99d41f646",
+    "defaults": "disabled",
+    "raw_competitor_text": "not stored",
+    "paid_ai": "prohibited"
+  }
+}

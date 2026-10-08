@@ -1,0 +1,13 @@
+{
+  "enabled": false,
+  "timezone": "Asia/Tokyo",
+  "competitors": [],
+  "keywords": [],
+  "themes": [],
+  "search_type": "RECENT",
+  "profile_summary": true,
+  "max_pages": 2,
+  "page_size": 25,
+  "request_limit": 20,
+  "weekly_only": true
+}
