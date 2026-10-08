@@ -29,13 +29,13 @@ def main():
         st.stop()
     root = Path(__file__).resolve().parent.parent
     st.title('Threads 管理画面（ローカル専用）')
-    st.caption('この画面は投稿・Actions実行を行いません。変更はGitHubへ反映後に適用されます。ポート転送や外部公開は禁止です。')
-    posts_path = root / 'posts/posts.json'
+    st.caption('この画面は投稿・Actions実行を行いません。下書きはprivate内に保存し、承認済み予約をGitHub Secretへ反映します。ポート転送や外部公開は禁止です。')
+    posts_path = root / 'private/posts.json' if (root / 'private/posts.json').exists() else root / 'posts/posts.json'
     config_path = root / 'config/automation.json'
     try:
         posts = json.loads(posts_path.read_text(encoding='utf-8'))['posts']
         config = json.loads(config_path.read_text(encoding='utf-8'))
-        history = read_history(root / 'state/history.sqlite3')
+        history = read_history(root / 'private/history.sqlite3' if (root / 'private/history.sqlite3').exists() else root / 'state/history.sqlite3')
     except (OSError, ValueError, KeyError) as error:
         st.error('設定または履歴を読み込めません。ローカルファイルを確認してください。')
         st.stop()
@@ -57,6 +57,12 @@ def main():
         for post in selected:
             with st.expander(post['id']):
                 st.write(post['text'])
+                if posts_path.parent.name == 'private':
+                    edited = st.text_area('本文を編集（保存すると未承認に戻ります）', value=post['text'], key='text-'+post['id'])
+                    if st.button('本文を保存', key='edit-'+post['id']):
+                        from threads_publisher.weekly import edit_text
+                        edit_text(posts_path, post['id'], edited)
+                        st.rerun()
                 st.write('承認済み' if post.get('approved') is True else '未承認')
                 if post.get('editor_review'):
                     st.json(post['editor_review'])
@@ -83,7 +89,7 @@ def main():
         st.dataframe(history, width='stretch')
         st.caption('pendingは公開結果が不確定な可能性があります。履歴削除や自動再投稿はできません。')
     with analysis:
-        snapshots = root / 'analytics/insights.json'
+        snapshots = root / 'private/insights.json'
         if snapshots.exists():
             try:
                 data = json.loads(snapshots.read_text(encoding='utf-8'))

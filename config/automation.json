@@ -41,5 +41,6 @@
       "reposts",
       "quotes"
     ]
-  }
+  },
+  "mode": "chatgpt-plus"
 }

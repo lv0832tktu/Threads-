@@ -1,8 +1,8 @@
 {
   "local_unittest": {
-    "passed": 49,
+    "passed": 61,
     "failed": 0,
-    "command": "python3 -m unittest discover -s tests -v"
+    "command": "python -m unittest discover -s tests -v (venv with free cryptography installed)"
   },
   "workflows": "actionlint v1.7.7 passed for all 3 workflows",
   "dashboard": {
@@ -16,10 +16,11 @@
     "threads": "not executed",
     "ai_provider": "not executed",
     "github_actions": "not executed",
-    "github_push": "not executed"
+    "github_push": "See Git history / final response for branch push result"
   },
   "defaults": {
     "auto_publish_enabled": false,
     "ai_enabled": false
-  }
+  },
+  "workflow_mode": "ChatGPT Plus only; weekly import, report and encrypted Secret-based reservations verified"
 }

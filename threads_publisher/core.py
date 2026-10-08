@@ -91,16 +91,19 @@ class History:
                 (account, post_id, status, created_at, text, scheduled_at, topic, variant)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                 (account, post_id, 'pending', datetime.now(timezone.utc).isoformat(),
-                 metadata.get('text'), metadata.get('scheduled_at'), metadata.get('topic'), metadata.get('variant')))
+                 None, None, None, None))
             self.db.commit()
         except sqlite3.IntegrityError:
             raise SafeError('Post already recorded or pending; refusing duplicate publication') from None
         # Durable reservation MUST succeed before any publication operation.
         self.persist()
 
-    def finish(self, account, post_id, remote_id):
+    def finish(self, account, post_id, remote_id, post=None):
         self.db.execute('UPDATE posts SET status=?, remote_id=?, published_at=? WHERE account=? AND post_id=?',
                         ('published', remote_id, datetime.now(timezone.utc).isoformat(), account, post_id))
+        if post:
+            self.db.execute('UPDATE posts SET text=?, scheduled_at=?, topic=?, variant=? WHERE account=? AND post_id=?',
+                            (post.get('text'), post.get('scheduled_at'), post.get('topic'), post.get('variant'), account, post_id))
         self.db.commit()
         self.persist()
 
@@ -125,5 +128,5 @@ def publish_post(client, history, post, enabled=False, approved_id=''):
     except SafeError:
         history.mark_uncertain(account, post['id'])
         raise
-    history.finish(account, post['id'], remote_id)
+    history.finish(account, post['id'], remote_id, post)
     return remote_id

@@ -12,3 +12,5 @@ config/*.json.lock
 state/*.lock
 .venv*/
 .streamlit/secrets.toml
+
+/private/

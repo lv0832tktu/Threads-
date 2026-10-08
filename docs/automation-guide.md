@@ -1,256 +1,159 @@
-# 拡張システムの使い方
+# ChatGPT Plusだけを使う週次運用
 
-この拡張は既存の手動投稿と承認方式を維持します。今回の開発ではコードとローカルテストのみ実施しました。
-実投稿、GitHub Actionsの実行、GitHubへのpush、定期公開の有効化、管理画面の外部公開は実施していません。
+ChatGPT Plusの画面で文章を作り、Codexで予約登録します。Plus契約はOpenAI API料金やAPIキーを含みません。
+この構成ではChatGPTへの自動アクセス・スクレイピングをせず、OpenAI/Groq APIにもリクエストしません。
+`generate` コマンドとWriterのAPI生成は無効化されています。AI用キーは不要です。
 
-## 1. 何が追加されたか
+## 毎週の流れ
 
-| 役割 | モジュール | 責務 |
-| --- | --- | --- |
-| Director | director.py | テーマ・想定読者・口調・利用上限の検証 |
-| Research | research.py | 人が用意した根拠・調査情報の整理。自動で真偽を保証しない |
-| Writer | writer.py / ai.py | AIプロバイダー切替、フック・本文・締めの生成、利用枠予約 |
-| Editor | editor.py | 構造・文字数・類似内容チェック。事実・自然さは人による承認が必要 |
-| Scheduler | scheduler.py | 日本時間の予約、期限内の遅延追従、承認・履歴・件数制限 |
-| Analyst | insights.py / analyst.py | 公式Insightsエンドポイントから数値取得、慎重な比較、改善候補 |
+1. 前週のレポートをChatGPTへ貼り付け、ジャンル・読者・口調を指定して21本の投稿文を作ります。
+2. Codexに内容の整理・予約登録を依頼するか、JSONを `private/week.json` に保存します。
+3. 一括登録して本文と日時を確認・編集します。初期承認は全件falseです。
+4. 個別に承認し、承認済みだけを書き出します。
+5. GitHub Secretへ承認済みJSONを保存します。Gitには投稿案を追加しません。
+6. ユーザーによる動作確認・公開許可の後だけ、予約公開の3つのスイッチを有効にします。
 
-公開の責任をAIへ委譲しません。AI出力は常に `approved: false` の下書きです。
-ジャンルは未指定なので `config/automation.json` の `ai.theme` と `ai.audience` は空です。
-テーマ・読者が空のままAIを有効化すると、API呼び出し前に停止します。
+この変更では実投稿、Actionsの手動実行、定期公開有効化、有料API利用を行っていません。
 
-## 2. GitHubに反映する手順（承認後）
+## 週21本の入力形式
 
-この作業のローカルブランチは `codex/threads-automation-extension` です。既存mainの公開履歴から作成しました。
-ローカルコミットを確認してから、次の操作でブランチだけを送信できます。
+`private/` はGit管理対象外です。入力ファイルや個人情報を公開リポジトリへ置かないでください。
+ファイルは {"posts":[...]} 形式で、配列内に21件の `{ "id":"一意のID", "text":"投稿文" }` を入れます。
+文字列21件の配列も受け付けます。その場合は開始日・アカウント・順番から固定IDを作ります。
+21件を7日間の08:00・19:00・22:00（Asia/Tokyo）へ順番に割り当てます。
 
 ```bash
 cd /workspace/Threads-
-git log -1 --oneline
-git diff origin/main...HEAD --stat
-git push -u origin codex/threads-automation-extension
+mkdir -p private
+# ChatGPTで作ったJSONをprivate/week.jsonへ保存した後に実行
+python3 -m threads_publisher import-week --start-date 2026-10-12
 ```
 
-GitHubでブランチの **Compare & pull request** を開き、baseを `main` にしてPRを作成します。
-コードとテストを確認してマージしてください。GitHub APIがこの環境から利用できない場合も、ブラウザーでPRを作れます。
-PR作成後はSecretsを使わないテスト用Actionsが動く設計です。今回はこちらから実行していません。
+開始日は実際に使う週の年月日に変更してください。保存先は `private/posts.json` です。
+同じID・同じ内容の再取り込みは追加せず、確認済みの承認状態も保持します。
+ID衝突、同じ文章、既存枠との衝突、旧投稿との重複、21件以外、500文字超は拒否し、既存データを上書きしません。
+類似表現まで完全に同一内容と判定できる保証はないため、人による内容確認も必要です。
 
-マージ前後とも、新しいVariablesを `true` にしないでください。AIと自動公開の設定も初期状態では無効です。
-後述の3条件が満たされるまで定期公開は実行されません。
-GitHub Actionsが既存の履歴を更新している間にmainを上書きしないでください。force pushは禁止です。
-
-## 3. 予約日時と承認
-
-既存の投稿には日時を勝手に追加していません。`test-001` の本文・承認・履歴も保持しています。
-`scheduled_at` がない投稿は手動専用で、定期公開の対象になりません。
-
-新しい投稿を既存 `posts` 配列へ追加する例です。実際に予約する際は未来の日時に変更してください。
-
-```json
-{
-  "id": "scheduled-example-001",
-  "text": "ここに確認済みの投稿文を入れます。",
-  "approved": false,
-  "scheduled_at": "2026-10-09T08:00:00+09:00",
-  "account": "default",
-  "topic": "指定するジャンル",
-  "variant": "baseline"
-}
-```
-
-日時にはタイムゾーンが必須です。日本時間は `+09:00` です。
-承認は実際の本文・根拠・表現を確認後に `true` に変更します。投稿IDは一意で固定します。
-予定日時を過ぎた承認済み投稿だけが対象です。Actionsが遅れた場合は24時間以内の予定を拾い直します。
-24時間を超えた予約は自動公開せず、運用担当者が日時と内容を見直してください。
-この期限は `schedule.max_lateness_hours` で調整できます。許容範囲は最大168時間です。
-
-1日・1回の上限は初期値3件です。失敗・不確定な予約もその日の利用件数に含めます。
-遅延で複数の予定が重なると、同じ実行で連続公開される可能性があります。正確な時刻・間隔は保証しません。
-GitHubのscheduleは15分ごとの確認であり、予約時刻ぴったりの実行を保証しません。
-
-### 自動公開を将来有効にする際の条件
-
-ユーザーの承認後に、次の3つをすべて有効にする必要があります。
-
-1. `config/automation.json` の `auto_publish_enabled: true` をGitHubへ反映
-2. Repository variable `THREADS_PUBLISH_ENABLED=true`
-3. 新しいRepository variable `THREADS_AUTO_PUBLISH_ENABLED=true`
-
-さらに投稿の `approved: true`、有効な日時、トークン、書き込み権限、未投稿の履歴が必要です。
-既存の `THREADS_PUBLISH_ENABLED` だけがtrueでも自動公開は始まりません。
-新規スイッチは未登録または `false` のままにしてください。自動停止には新規スイッチを `false` にするのが簡単です。
-実行中の公開処理はスイッチを変更しても途中で撤回できる保証がありません。
-既存の手動投稿は従来どおり、投稿IDと承認IDを指定して行えます。
-
-## 4. AI下書き生成
-
-標準ライブラリのみでOpenAIとGroqに対応しています。管理画面を使わなければ追加のPython依存はありません。
-設定例は `config/automation.json` にあります。
-
-- `ai.enabled`: 初期false。手動生成を行う場合も必要
-- `ai.provider`: `openai` または `groq`
-- `ai.model`: 選択したサービスに対応するモデル名
-- `ai.api_key_env`: OpenAIなら `OPENAI_API_KEY`、Groqなら `GROQ_API_KEY`
-- `ai.theme`, `ai.audience`, `ai.tone`: 投稿テーマ・想定読者・口調
-- `ai.daily_drafts`: 毎日の最大生成件数。初期3件
-- `daily_slots`: `08:00`, `19:00`, `22:00`（Asia/Tokyo）
-
-生成後はその時点より未来の空いている投稿枠を割り当てます。今日の枠が埋まっている場合は翌日以降へ繰り越します。
-枠の指定は下書きへの予約情報付与であり、承認にはなりません。
-毎日3件は保証数ではなく上限です。API失敗、内容重複、利用上限では少なくなります。
-
-`research/sources.json` の `sources` に調べた情報を入れられます。
-各項目は `summary` が必須で、出典URL・確認日などを任意に追加できます。最大10件、summaryは各1,000文字までです。
-個人情報・機密情報・APIキーを入れないでください。指定データはAIサービスへ送信されます。
-自動Web検索や完全な事実検証は未実装です。モデルへの指示と形式検査だけで誤情報を防げるとは扱いません。
-
-利用ログは `state/ai_usage.sqlite3` に保存します。日付・リクエストID・状態・生成投稿IDを記録し、キーは保存しません。
-初期上限は日3リクエスト・月90リクエスト・出力900トークン/リクエストです。
-失敗・不確定・途中停止でも確保した枠を消費します。API呼び出し前にGitへ利用枠を保存します。
-モデルに渡す入力全体を20,000文字までに制限し、改善データは要約した提案だけを渡します。
-これらは回数・入力・出力の上限で、円単位の厳密な請求上限ではありません。サービス側でも予算上限を設定してください。
-
-承認後のGitHubでの生成には `THREADS_AI_GENERATION_ENABLED=true` も必要です。
-手動操作は **Threads automation** → `operation=generate`、定期生成は同じスイッチで有効になります。
-scheduleを15分ごとに確認しても、永続化された日次上限で何度も課金生成しない設計です。
-AIのキーが未設定でも既存手動投稿・予約・分析機能は独立して動作します。
-
-## 5. Insightsの取得と改善
-
-対象は公式Threads APIの投稿別Insightsです。候補指標は `views`, `likes`, `replies`, `reposts`, `quotes` です。
-`threads_basic` に加えて `threads_manage_insights` 権限の確認・追加認証が必要です。
-APIの権限・アカウント・投稿種類・バージョンによって取得できる指標は変わります。
-
-今回の開発ではMetaへの実接続は行っていません。公開済み投稿の読み取り確認で、指標が取得できるかを検証してください。
-指標は個別に問い合わせ、非対応・権限不足のものを `unavailable` として保存します。欠測を0として扱いません。
-対応する追加指標は公式資料で確認後、 `insights.metrics` に名前を追加できます（最大10指標）。
-追加指標はJSONと管理画面の一覧で確認でき、反応率計算には基本の4反応指標だけを使います。
-取得エラー、期限切れ、レート制限は自動投稿の再試行につなげません。
-
-参照する公式資料：
-- https://developers.facebook.com/docs/threads/insights/
-- https://developers.facebook.com/docs/threads/get-started/long-lived-tokens/
-
-`THREADS_INSIGHTS_ENABLED=true` を承認後に設定し、**Threads automation** の `operation=insights` で読み取りを検証できます。
-新しく公開された投稿は24時間・72時間・7日後に取得します。
-遅延時は実際の取得日時・公開後経過時間を記録します。過去の時点の数値を復元したとは扱いません。
-結果は `analytics/insights.json` に、アカウント、投稿ID、公開ID、本文、公開日時、取得日時、指標を紐づけて保存します。
-取得済みチェックポイントは重複保存しません。部分取得のスナップショットも保存後は自動再取得しません。
-
-旧履歴の公開日時は推測しません。既存1件には公開日時・本文がないため通常取得ではスキップします。
-読み取りを承認した後、安全にトークンを注入した環境で次のコマンドを使うと、公式メディア情報から旧履歴を補完できます。
+本文を `private/edited-text.txt` に保存してから編集します。編集すると承認はfalseに戻ります。
 
 ```bash
-python3 -m threads_publisher insights --backfill-metadata --persist-git
+python3 -m threads_publisher edit-draft --post-id weekly-default-2026-10-12-01
+python3 -m threads_publisher approve-draft --post-id weekly-default-2026-10-12-01
+python3 -m threads_publisher export-approved
 ```
 
-この操作は公開を行いませんが、APIへの読み取りと履歴のコミット・pushを行います。
-実行時点ですでにチェックポイントを過ぎていれば、その時点の数値を遅延取得として記録します。
+入力でIDを指定した場合は、そのIDを使います。全件一括自動承認はしません。
+編集・承認・差し戻し・日時変更には既存のローカル管理画面も利用できます。
+画面はprivate/posts.jsonがあればそちらを表示し、外部バインドは拒否します。
 
-`improve` は数値の集計と助言を `experiments/improvement.json` に保存します。追加のAI課金はありません。
-閲覧数に対する反応率は `(いいね + 返信 + リポスト + 引用) / 閲覧数` です。
-閲覧数が0または欠測のときは比率を計算しません。反応指標が欠けた場合は完全な反応率を未知とします。
-アカウント・取得時点・遅延条件を分け、文字数・フック形式・テーマ・日本時間帯・改善識別子を比較します。
-同じ条件で5投稿未満では有効性を断定しません。5投稿以上でも観察上の関連で、因果関係の証明ではありません。
-改善候補には安定した実験IDを付け、次のAI生成が候補と実験IDを引き継ぎます。
-改善レポートを使った次の生成にはAI料金が発生します。提案を採用した投稿も必ず未承認です。
+## 必要なSecrets（有料APIキーは不要）
 
-## 6. ローカル管理画面
+GitHub → Settings → Secrets and variables → Actions → Secretsで保存します。
+
+| Secret | 用途 |
+|---|---|
+| THREADS_ACCESS_TOKEN | 既存のThreads認証。Insightsにはthreads_manage_insights権限を要確認 |
+| THREADS_SCHEDULE_JSON | private/approved-posts.jsonの内容。承認済み予約だけを保存 |
+| THREADS_STATE_KEY | 履歴・分析・レポートを認証付き暗号化する鍵 |
+
+Secretの値はチャット、コード、ログへ貼り付けないでください。
+承認済みJSONはローカルでファイルを開いてGitHub Secret入力欄へ保存します。
+GitHub CLIの認証・APIアクセスが利用できる管理端末では、次のstdin入力も使えます。
 
 ```bash
-python3 -m venv .venv-dashboard
-.venv-dashboard/bin/python -m pip install -r requirements-dashboard.txt
-.venv-dashboard/bin/streamlit run threads_publisher/dashboard.py \
-  --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false
+gh secret set THREADS_SCHEDULE_JSON --repo lv0832tktu/Threads- < private/approved-posts.json
 ```
 
-予定一覧・日時変更・下書き承認/差し戻し・履歴・指標グラフ・件数・自動公開設定を操作できます。
-変更はローカルファイルへ保存されます。GitHubにコミットして反映するまでActionsには適用されません。
-画面から実投稿、Actions実行、Secrets操作はできません。認証済みのローカルマシン利用者を運用担当者とします。
+GitHub Secretは48KB制限です。書き出し機能は45KBを上限にしています。
+公開後も同じIDは履歴によりスキップするため、毎週Secretの内容を入れ替えられます。
+公開済み投稿を別IDで再登録しないでください。
 
-この版はローカル専用です。明示的なloopback以外のバインドを拒否します。
-ポート転送・トンネル・Streamlit Cloud等への外部公開は行わないでください。
-外部公開する場合は別途、認証付きゲートウェイ、閲覧者と運用担当者の権限分離、CSRF対策、監査ログを設計・検証してから公開する必要があります。
-認証なしの公開管理画面は提供しません。
-
-## 7. 安全な運用、通知とトークン
-
-公開前に `pending` をGitHubへ保存し、結果不明でも同じアカウントと投稿IDの再投稿を止めます。
-失敗・不確定な公開は `error_kind` を記録し、pendingを残します。安全な自動再投稿はできません。
-Threads上の投稿とコンテナ状態を確認してから運用担当者が処理してください。履歴を削除して再実行しないでください。
-
-手動・定期ワークフローは共通の `threads-publication` concurrencyグループを利用します。
-GitHubのconcurrencyは同時実行を防ぎますが、全pending実行のFIFOを保証しません。後続の定期確認で遅延分を拾います。
-ローカルは別途ファイルロックで同時操作を止めます。複数端末での公開はこのロックの対象外なので、公開経路はActionsに統一します。
-状態のpush競合・権限不足・ブランチ保護は失敗として停止し、force pushや自動履歴破棄はしません。
-
-GitHubの読み取りチェック・PRテストは `contents: read`、履歴を保存するジョブだけ `contents: write` です。
-Actionsは公式v6へ更新し、Node.js 24使用と固定コミットSHAを確認しました。
-GitHub-hosted `ubuntu-latest` を対象とします。self-hostedを使う場合はrunner v2.327.1以上、コンテナ内Git認証を使う場合はv2.329.0以上が必要です。
-今回GitHub上で新しいワークフローを動かしての検証はしていません。
-
-エラーの生レスポンス・認証ヘッダー・トークンはログへ出しません。認証情報付きリダイレクトも拒否します。
-公開APIの自動リトライはしません。読み取りのレート制限は次回以降の実行で回復を待ちます。
-失敗時はActionsのジョブ概要に固定メッセージを出します。
-GitHubの **Settings → Notifications → Actions** でワークフロー失敗メールを設定してください。
-この版はSlackやメールサービスのAPIを呼ばず、GitHub標準の通知を利用します。
-
-`accounts.default.token_expires_at` に、発行時に確認した期限をタイムゾーン付きISO形式で記録できます。
-`python3 -m threads_publisher token-status` はAPIに接続せず残日数を確認します。未設定なら期限不明と表示します。
-期限7日前以内では長期トークン更新を案内し、期限切れでは再認証を案内します。
-この日時だけでトークン有効性は保証されないので、接続確認と組み合わせてください。
-長期トークンへの交換・更新はMeta公式の現在の条件を確認し、安全な管理環境で行います。
-新しいトークンをRepository Secretへ置き換えてから、まず接続確認してください。
-アプリシークレットや新しいトークンをJSON・Git・Actionsログへ保存しないでください。
-自動更新・GitHub Secret更新をする管理者権限はこの版には追加していません。
-
-## 8. Secrets・Variables・費用
-
-GitHubのリポジトリ **Settings → Secrets and variables → Actions** に設定します。
-**Secrets**は秘密の値、**Variables**はON/OFFなどの公開可能な設定です。
-
-| 種類 | 名前 | 用途と初期状態 |
-| --- | --- | --- |
-| Secret | THREADS_ACCESS_TOKEN | 既存のThreads認証。変更不要。Insights用権限は要確認 |
-| Secret | OPENAI_API_KEY | OpenAI生成を使う場合のみ必要。今回は未登録でよい |
-| Secret | GROQ_API_KEY | Groq生成を使う場合のみ必要。両サービスのキーは不要 |
-| Variable | THREADS_PUBLISH_ENABLED | 既存の手動投稿用。既存設定を勝手に変更しない |
-| Variable | THREADS_AUTO_PUBLISH_ENABLED | 新規。未登録またはfalse。承認まではtrueにしない |
-| Variable | THREADS_AI_GENERATION_ENABLED | 新規。未登録またはfalse。有効化するとAI課金が発生し得る |
-| Variable | THREADS_INSIGHTS_ENABLED | 新規。未登録またはfalse。読み取り・定期分析を許可 |
-
-AIキーは選んだサービスの管理画面で発行し、GitHubのSecret入力欄に直接保存します。チャットに貼り付けないでください。
-`GITHUB_TOKEN` はActionsが提供し、通常追加不要です。これはThreadsトークンとは別です。
-Secretsの値はクラウド開発環境へ自動注入されません。ローカルでAPIを試すには別途安全な注入が必要です。
-
-追加料金が発生し得る部分：
-- AIモデルAPI：入力・出力・モデルに応じた従量料金。プロバイダー側の上限設定を併用します。
-- GitHub Actions：リポジトリ種別や契約の無料枠を超える実行時間。15分ごとの有効化は実行回数を増やします。
-- 管理画面のホスティング：外部公開する別構成を将来用意する場合の費用。今回はローカル起動のみです。
-
-Threads APIの請求条件・利用制限はMetaの最新資料で確認してください。料金・レート上限の保証はしていません。
-
-## 9. 複数アカウントへの拡張
-
-`accounts` に別名と `token_env`、任意の `expected_user_id` を追加し、投稿に同じ `account` 別名を設定できます。
-CLIは `--account secondary` で選択します。トークン変数名は `THREADS_ACCESS_TOKEN` で始めます。
-履歴キーは実際のThreadsアカウントIDと投稿IDです。Insightsも接続したアカウントだけを取得します。
-`expected_user_id` はトークンの取り違え防止に利用します。別名と実IDを混同しないでください。
-
-この版のActionsとAI自動生成はdefaultアカウントのみを対象としています。
-複数アカウントをActionsで回すには対応Secretの注入とmatrix/入力、各アカウントの上限・運用ルールの追加が必要です。
-追加アカウントの認証や自動公開は行っていません。
-
-## 10. ローカル検証
+無料ライブラリ `cryptography` をインストールし、管理端末で鍵をファイルへ生成します。
+鍵を画面へ表示するコマンドにはしていません。
 
 ```bash
-python3 -m unittest discover -s tests -v
-python3 -m threads_publisher schedule --dry-run
-python3 -m threads_publisher schedule
-python3 -m threads_publisher generate
-python3 -m threads_publisher token-status
+python3 -m venv .venv-private
+.venv-private/bin/python -m pip install -r requirements-private.txt
+.venv-private/bin/python -c 'from cryptography.fernet import Fernet; from pathlib import Path; Path("private/state-key.txt").write_bytes(Fernet.generate_key())'
+# GitHub CLIが使える端末の場合のみ
+gh secret set THREADS_STATE_KEY --repo lv0832tktu/Threads- < private/state-key.txt
 ```
 
-初期設定のscheduleとgenerateは無効と表示し、トークンやキーを要求せず終了します。
-`--dry-run` は予定一覧を確認するだけで、履歴を予約せずAPIを呼びません。
-有効化後は同じコマンドが公開や有料AI生成を行い得ます。承認前にスイッチを変更しないでください。
-テストは一時ファイルと模擬APIを使い、実アカウントへ投稿しません。
+鍵は安全な保管先へバックアップし、ローカル鍵ファイルのアクセスも制限してください。
+履歴が作られた後で鍵を作り直すと復元できません。鍵の更新には別途移行作業が必要です。
+鍵がない・暗号データが破損・復元できない場合、公開処理は停止します。
+
+## 予約公開と遅延対応
+
+以下をすべて有効にするまで定期公開は始まりません。
+
+- config/automation.jsonのauto_publish_enabled=true
+- Repository variable THREADS_PUBLISH_ENABLED=true
+- Repository variable THREADS_AUTO_PUBLISH_ENABLED=true
+
+今回は設定ファイルはfalse、新規Variableの登録・有効化も行いません。
+予定時刻を過ぎた承認済み投稿だけを対象とし、日時のない旧投稿は自動公開しません。
+Actionsは標準 `ubuntu-latest` ランナーで15分ごとに確認します。予定ぴったりの実行は保証されません。
+遅延は初期24時間以内で追従し、それ以上は公開せず確認待ちです。1日・1回の上限は3件です。
+手動・定期処理は同じconcurrencyグループで競合を防ぎます。
+公開前に予約履歴を永続化し、公開結果が不明でも二重投稿を止めます。pending履歴を削除して再投稿しないでください。
+
+新しい予約公開は `--private-state --from-secret --persist-git` を使います。
+SecretのJSONはprivate内だけに展開し、Gitへ保存するのは `state/private-state.enc` の暗号文だけです。
+投稿本文・分析・未完了履歴・レポートはこの暗号化状態へ保存します。鍵は含めません。
+初回は旧state/history.sqlite3をコピーして引き継ぎます。旧ファイルは変更しません。
+Gitへのpushが失敗すると公開前に停止します。ブランチ保護とActionsの書き込み権限が必要です。
+暗号化ファイルや鍵を削除・初期化すると二重投稿防止が失われます。元に戻してから運用を再開してください。
+既存の手動投稿ワークフローと旧履歴は維持します。未公開の新規案は旧posts/posts.jsonへ追加しないでください。
+既存Git履歴にすでに記録されたデータを非公開化する機能ではありません。
+
+## 無料のThreads分析と週次レポート
+
+OpenAI/Groqのキーは不要です。Threads公式Insights APIの読み取りは既存トークンを使います。
+閲覧数・いいね・返信・リポスト・引用を候補として個別に取得し、対応しない指標は未知として記録します。
+公開24時間・72時間・7日後を基本に、遅延時は実際の取得日時を記録します。
+欠測を0とみなさず、Pythonで反応率・取得時点・遅延・文字数・時間帯を比較します。
+
+分析を動作確認後に許可する場合だけ、Variable THREADS_INSIGHTS_ENABLED=trueを設定します。
+このスイッチは予約公開のスイッチとは独立です。分析だけを有効にしても公開はしません。
+Insights権限・トークンの有効性は実読み取りで検証する必要があり、この作業では実APIを呼んでいません。
+
+同じ定期ワークフローが週次レポートを日本時間の週ごとに1回生成します。
+手動のoperation=reportでは再生成できます。分析未取得ならデータ不足と表示します。
+レポートは本文・アカウントIDを除いた集計と、ChatGPTへ相談する文章です。
+少数データでは有効性を断定しません。ChatGPTへ送る前に運用担当者が内容を確認してください。
+レポートも暗号化状態内に保存し、公開ログ・公開Artifactsへ出力しません。
+
+ダウンロードしたmainの暗号化状態と安全に注入したTHREADS_STATE_KEYがあるローカル環境で復元できます。
+
+```bash
+.venv-private/bin/python -m threads_publisher report --private-state
+```
+
+このコマンドはAPIを呼ばず、private/weekly-report.mdへレポートを作ります。`--persist-git`を付けなければpushしません。
+生成ファイルをローカルで開き、ChatGPTへ貼り付けて次週21本を作ります。
+
+## 追加料金を避けるための注意
+
+OpenAI/Groqへの自動リクエスト・キー注入・定期生成ジョブを削除しました。
+有料APIや外部ホスティング契約は不要です。暗号化ライブラリも無料です。
+ChatGPT Plus自体の既存契約は必要です。PlusをAPIの利用権としては扱いません。
+GitHub標準ランナーでも契約・リポジトリ種別によって無料枠があります。
+有効化前にBillingのActions利用枠・支出上限を確認し、追加請求を許可しない設定にしてください。
+無料枠を超える場合はジョブ頻度を下げるか停止します。「絶対に無料」とは保証できません。
+新たな有料サービスを導入する場合は事前に相談する必要があり、今回は導入していません。
+
+## GitHubへの反映と検証
+
+ブランチはcodex/threads-automation-extensionです。今回変更をpushし、可能ならmain向けPRを作ります。
+レビュー後のマージと定期公開の有効化は別です。新規公開スイッチはfalseのままにしてください。
+テストは標準ライブラリと無料の暗号化依存を使い、模擬APIだけで実行します。
+
+```bash
+.venv-private/bin/python -m unittest discover -s tests -v
+```
+
+PR作成ができない場合は次のページでbase=main、compare=codex/threads-automation-extensionを確認します。
+https://github.com/lv0832tktu/Threads-/compare/main...codex/threads-automation-extension?expand=1
+
+private/はgitignore対象です。`git add -f private`、GitHubコメント・Issueへの本文貼り付け、公開Artifactsへのアップロードは禁止です。
