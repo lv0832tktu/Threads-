@@ -75,3 +75,6 @@ python3 -m threads_publisher check
 ChatGPT Plusで週21本を作り、Codexで日本時間08:00・19:00・22:00に一括予約登録する構成です。OpenAI/Groq APIへのリクエストは禁止しています。
 [拡張システムの使い方](docs/automation-guide.md) に、段階ごとの設定、GitHubへの反映、Secrets・Variables、費用と制限を記載しています。
 自動公開は初期無効です。新しい下書きはprivate内、承認済み予約はGitHub Secret、永続状態は暗号文として保存します。既存投稿データと公開履歴を保持しています。
+
+競合・検索サンプルの週次分析は [公式API競合分析ガイド](docs/market-analysis.md) を参照してください。
+初期無効で、有料AI APIやスクレイピングは使いません。競合本文を保存・転載せず、未取得の数値は推測しません。

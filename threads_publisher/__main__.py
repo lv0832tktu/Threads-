@@ -8,7 +8,7 @@ from .operations import account_token, operation_lock, token_status, job_summary
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['check', 'publish', 'schedule', 'generate', 'insights', 'improve', 'token-status', 'import-week', 'edit-draft', 'approve-draft', 'export-approved', 'report'], nargs='?', default='check')
+    parser.add_argument('command', choices=['check', 'publish', 'schedule', 'generate', 'insights', 'improve', 'token-status', 'import-week', 'edit-draft', 'approve-draft', 'export-approved', 'report', 'market', 'market-report'], nargs='?', default='check')
     parser.add_argument('--post-id', default='')
     parser.add_argument('--approved-post-id', default='')
     parser.add_argument('--posts', default='posts/posts.json')
@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--export', default='private/approved-posts.json')
     parser.add_argument('--report', default='private/weekly-report.md')
     parser.add_argument('--weekly-only', action='store_true')
+    parser.add_argument('--market-config', default='config/market.json')
     args = parser.parse_args()
     history = None
     try:
@@ -51,6 +52,24 @@ def main():
                 result=export_approved(args.drafts,args.export)
             print(json.dumps(result))
             return 0
+        if args.command=='market':
+            from .market import load_market
+            if os.environ.get('THREADS_MARKET_CONFIG'):
+                from .storage import atomic_json
+                try:
+                    secret_config=json.loads(os.environ['THREADS_MARKET_CONFIG'])
+                except ValueError:
+                    raise SafeError('Private research config Secret is invalid') from None
+                atomic_json('private/market-config.json',secret_config)
+                args.market_config='private/market-config.json'
+            market_config=load_market(args.market_config)
+            if not market_config['enabled']:
+                print('Public competitor research disabled')
+                return 0
+            if not market_config['competitors'] and not market_config['keywords']:
+                raise SafeError('Configure competitors or search keywords first')
+            if not args.private_state:
+                raise SafeError('Public research requires private encrypted storage')
         if args.command=='generate':
             print('Paid AI API generation disabled; use import-week with ChatGPT Plus drafts')
             return 0
@@ -93,7 +112,26 @@ def main():
                 private.save()
                 if args.persist_git:
                     git_persist(['state/private-state.enc'])
-            if args.command=='report':
+            if args.command in ('market','market-report'):
+                from .market import MarketClient,collect_market,market_report
+                if args.command=='market':
+                    token=account_token(config,args.account)
+                    client=Client(token)
+                    identity=client.connect()['id']
+                    expected=config.get('accounts',{}).get(args.account,{}).get('expected_user_id')
+                    if expected and identity!=expected:raise SafeError('Connected account does not match configuration')
+                    result=collect_market(MarketClient(token,limit=market_config['request_limit']),market_config,'private/market-data.json')
+                    if not result.get('skipped'):
+                        market_report('private/market-data.json','private/insights.json','private/market-report.md')
+                else:
+                    result=market_report('private/market-data.json','private/insights.json','private/market-report.md')
+                if private:
+                    history=History(args.history)
+                    save_private()
+                print(json.dumps(result))
+                if result.get('errors'):
+                    raise SafeError('Some public research endpoints are unavailable; partial report retained privately')
+            elif args.command=='report':
                 from .report import weekly_report
                 print(json.dumps(weekly_report(args.insights,args.report,weekly_only=args.weekly_only)))
                 if private:

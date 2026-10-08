@@ -7,7 +7,7 @@ from pathlib import Path
 from .core import SafeError
 from .storage import atomic_json
 
-FILES=('history.sqlite3','insights.json','weekly-report.md','improvement.json','report-status.json')
+FILES=('history.sqlite3','insights.json','weekly-report.md','improvement.json','report-status.json','market-data.json','market-report.md')
 
 
 class PrivateState:
