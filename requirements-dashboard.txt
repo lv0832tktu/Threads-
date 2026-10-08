@@ -1,0 +1,2 @@
+# Optional; existing publisher has no dashboard dependency.
+streamlit==1.65.0

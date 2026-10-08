@@ -1,0 +1,25 @@
+{
+  "local_unittest": {
+    "passed": 49,
+    "failed": 0,
+    "command": "python3 -m unittest discover -s tests -v"
+  },
+  "workflows": "actionlint v1.7.7 passed for all 3 workflows",
+  "dashboard": {
+    "version": "1.65.0",
+    "functional_render": "5 tabs and existing 2 drafts / 1 published history rendered",
+    "http_health": "passed on loopback, stopped after validation",
+    "public_binding": "rejected"
+  },
+  "existing_data": "posts/posts.json and state/history.sqlite3 byte-for-byte preserved",
+  "external_verification": {
+    "threads": "not executed",
+    "ai_provider": "not executed",
+    "github_actions": "not executed",
+    "github_push": "not executed"
+  },
+  "defaults": {
+    "auto_publish_enabled": false,
+    "ai_enabled": false
+  }
+}

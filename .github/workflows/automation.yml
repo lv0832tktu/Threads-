@@ -1,0 +1,79 @@
+name: Threads automation (disabled by default)
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [plan, generate, insights, improve, token-status]
+        default: plan
+        description: Offline plan by default; AI generation may incur provider charges
+permissions:
+  contents: read
+concurrency:
+  group: threads-publication
+  cancel-in-progress: false
+jobs:
+  plan:
+    if: github.event_name == 'workflow_dispatch' && (inputs.operation == 'plan' || inputs.operation == 'token-status')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Offline plan
+        if: inputs.operation == 'plan'
+        run: python -m threads_publisher schedule --dry-run
+      - name: Expiry plan (no token/API access)
+        if: inputs.operation == 'token-status'
+        run: python -m threads_publisher token-status
+  operations:
+    if: >-
+      (github.event_name == 'schedule' &&
+       (vars.THREADS_AUTO_PUBLISH_ENABLED == 'true' || vars.THREADS_AI_GENERATION_ENABLED == 'true' || vars.THREADS_INSIGHTS_ENABLED == 'true')) ||
+      (github.event_name == 'workflow_dispatch' && (inputs.operation == 'generate' || inputs.operation == 'insights' || inputs.operation == 'improve'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Tests
+        run: python -m unittest discover -s tests -v
+      - name: Configure state author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Collect Insights
+        if: vars.THREADS_INSIGHTS_ENABLED == 'true' && (github.event_name == 'schedule' || inputs.operation == 'insights')
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+        run: python -m threads_publisher insights --persist-git
+      - name: Analyze and propose improvements
+        if: (vars.THREADS_INSIGHTS_ENABLED == 'true' && github.event_name == 'schedule') || inputs.operation == 'improve'
+        run: python -m threads_publisher improve --persist-git
+      - name: Generate unapproved drafts
+        if: vars.THREADS_AI_GENERATION_ENABLED == 'true' && (github.event_name == 'schedule' || inputs.operation == 'generate')
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python -m threads_publisher generate --persist-git
+      - name: Publish due approved posts
+        if: github.event_name == 'schedule' && vars.THREADS_AUTO_PUBLISH_ENABLED == 'true'
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_PUBLISH_ENABLED: ${{ vars.THREADS_PUBLISH_ENABLED }}
+          THREADS_AUTO_PUBLISH_ENABLED: ${{ vars.THREADS_AUTO_PUBLISH_ENABLED }}
+        run: python -m threads_publisher schedule --persist-git
+      - name: Failure guidance
+        if: failure()
+        run: echo 'Operation failed. Check permissions, token expiry, rate limits and pending state. Do not automatically retry uncertain publications.' >> "$GITHUB_STEP_SUMMARY"

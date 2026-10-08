@@ -1,0 +1,45 @@
+{
+  "timezone": "Asia/Tokyo",
+  "daily_slots": [
+    "08:00",
+    "19:00",
+    "22:00"
+  ],
+  "auto_publish_enabled": false,
+  "ai": {
+    "enabled": false,
+    "provider": "openai",
+    "model": "gpt-4.1-mini",
+    "api_key_env": "OPENAI_API_KEY",
+    "theme": "",
+    "audience": "",
+    "tone": "自然で誠実、誇張しない",
+    "daily_drafts": 3,
+    "daily_request_limit": 3,
+    "max_output_tokens": 900,
+    "max_text_chars": 500,
+    "duplicate_threshold": 0.85,
+    "monthly_request_limit": 90
+  },
+  "schedule": {
+    "max_lateness_hours": 24,
+    "max_posts_per_day": 3,
+    "max_posts_per_run": 3
+  },
+  "accounts": {
+    "default": {
+      "token_env": "THREADS_ACCESS_TOKEN",
+      "expected_user_id": null,
+      "token_expires_at": null
+    }
+  },
+  "insights": {
+    "metrics": [
+      "views",
+      "likes",
+      "replies",
+      "reposts",
+      "quotes"
+    ]
+  }
+}
