@@ -15,6 +15,7 @@ from .insights import instant, read_snapshots
 
 JST=ZoneInfo('Asia/Tokyo')
 FIELDS='id,username,text,timestamp,permalink'
+API_VERSION='v1.0'
 POST_METRICS={'likes':'likes_count','replies':'replies_count','reposts':'reposts_count','quotes':'quotes_count'}
 PROFILE_METRICS={**POST_METRICS,'views':'views_count','followers':'follower_count'}
 
@@ -62,9 +63,32 @@ def features(text,themes):
     return {'characters':len(text),'hook':hook,'themes':tags or ['未分類']}
 
 
+class PublicAPIError(SafeError):
+    """Only fixed classifications and bounded numeric API metadata are exposed."""
+    def __init__(self,message,kind,http_status=None,code=None,subcode=None):
+        super().__init__(message)
+        self.diagnostic={'kind':kind,'http_status':http_status if type(http_status) is int and 100<=http_status<=599 else None,
+                         'api_code':code if type(code) is int and 0<=code<=1000000 else None,
+                         'api_subcode':subcode if type(subcode) is int and 0<=subcode<=1000000000 else None}
+
+
+def public_api_error(status,payload):
+    error=payload.get('error',{}) if isinstance(payload,dict) else {}
+    if not isinstance(error,dict):error={}
+    code,subcode=error.get('code'),error.get('error_subcode')
+    if status==401 or code==190:kind,message='authentication','Public research token expired or invalid'
+    elif status==429 or code in (4,17,32,613):kind,message='rate_limit','Public research rate limited; retry on a later approved run'
+    elif status==403 or code in (10,200):kind,message='permission_or_access','Public endpoint permission or app access review required'
+    elif status==400:kind,message='request_or_access','Public request rejected; check parameters, API version and app access'
+    else:kind,message='api_error','Public endpoint request failed'
+    return PublicAPIError(message,kind,status,code,subcode)
+
+
 class MarketClient:
-    def __init__(self,token,limit=20,transport=None):
+    def __init__(self,token,limit=20,transport=None,api_version=API_VERSION):
         if not token:raise SafeError('Threads token missing for public research')
+        if not isinstance(api_version,str) or not re.fullmatch(r'v[1-9][0-9]{0,2}\.[0-9]{1,2}',api_version):raise SafeError('Invalid API version syntax')
+        self.api_version=api_version
         self.token,self.limit,self.calls=token,limit,0
         self.transport=transport or urllib.request.build_opener(NoRedirect()).open
 
@@ -72,19 +96,26 @@ class MarketClient:
         if endpoint not in ('keyword_search','profile_posts','profile_lookup'):raise SafeError('Public endpoint not allowed')
         if self.calls>=self.limit:raise SafeError('Public research request budget reached')
         self.calls+=1
-        request=urllib.request.Request('https://graph.threads.net/v1.0/'+endpoint+'?'+urllib.parse.urlencode(params),headers={'Authorization':'Bearer '+self.token})
+        request=urllib.request.Request('https://graph.threads.net/'+self.api_version+'/'+endpoint+'?'+urllib.parse.urlencode(params),headers={'Authorization':'Bearer '+self.token})
+        status=None
         try:
-            with self.transport(request,timeout=30) as response:result=json.load(response)
+            with self.transport(request,timeout=30) as response:
+                status=getattr(response,'status',200)
+                result=json.load(response)
             if not isinstance(result,dict):raise ValueError()
+            if 'error' in result:raise public_api_error(status,result)
             return result
         except urllib.error.HTTPError as error:
-            try:code=json.loads(error.read()).get('error',{}).get('code')
-            except (ValueError,AttributeError):code=None
-            if error.code==401 or code==190:raise SafeError('Public research token expired or invalid') from None
-            if error.code==429 or code in (4,17,32,613):raise SafeError('Public research rate limited; retry on a later approved run') from None
-            if error.code in (400,403):raise SafeError('Public endpoint unavailable or permission/access review required') from None
-            raise SafeError('Public endpoint request failed') from None
-        except (OSError,ValueError,TypeError):raise SafeError('Public research connection or response failed') from None
+            try:payload=json.loads(error.read(65536))
+            except (ValueError,AttributeError):payload={}
+            raise public_api_error(error.code,payload) from None
+        except PublicAPIError:raise
+        except SafeError:
+            raise PublicAPIError('Public API redirect refused','redirect_refused') from None
+        except OSError:
+            raise PublicAPIError('Public research connection failed','connection_error') from None
+        except (ValueError,TypeError):
+            raise PublicAPIError('Public research response format invalid','response_format',status) from None
 
     def posts(self,endpoint,params,config):
         rows=[];cursor=None;seen=set()

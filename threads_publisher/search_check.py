@@ -5,7 +5,7 @@ import os
 from datetime import datetime,timezone
 from pathlib import Path
 from .core import SafeError
-from .market import MarketClient,features,public_url,POST_METRICS,metric
+from .market import MarketClient,PublicAPIError,API_VERSION,features,public_url,POST_METRICS,metric
 from .storage import read_json
 from .private_state import PrivateState
 from .weekly import private_path
@@ -23,20 +23,31 @@ def select_keywords(catalog,group='ai_tools',offset=0,count=3,keyword=''):
     return matches[0]['keywords'][offset:offset+count]
 
 
-def run_check(token,key,catalog,words,path='private/search-check.enc',transport=None,search_type='RECENT',limit=10):
+SEARCH_FIELDS={'standard':'id,username,text,timestamp,permalink','minimal':'id,text,timestamp,permalink'}
+
+
+def request_diagnostic(api_version,search_type,limit,fields,query_count):
+    return {'method':'GET','endpoint':'keyword_search','api_version':api_version,'search_type':search_type,
+            'limit':limit,'fields':SEARCH_FIELDS[fields],'query_count':query_count,
+            'required_permissions':['threads_basic','threads_keyword_search'],'granted_permissions':'not_verified'}
+
+
+def run_check(token,key,catalog,words,path='private/search-check.enc',transport=None,search_type='RECENT',limit=10,api_version=API_VERSION,fields='standard'):
     if search_type not in ('TOP','RECENT') or not 1<=limit<=25 or not 1<=len(words)<=10:
         raise SafeError('Invalid read-only search limits')
     output=private_path(path)
     cipher=PrivateState(key=key).cipher # Validate encryption BEFORE any network request.
-    client=MarketClient(token,limit=len(words),transport=transport)
+    if fields not in SEARCH_FIELDS:raise SafeError('Unknown search fields preset')
+    client=MarketClient(token,limit=len(words),transport=transport,api_version=api_version)
     result={'collected_at':datetime.now(timezone.utc).isoformat(),'operation':'GET keyword_search only',
-            'search_type':search_type,'queries':[],'posts':[],'errors':[]}
+            'search_type':search_type,'queries':[],'posts':[],'errors':[],
+            'request':request_diagnostic(api_version,search_type,limit,fields,len(words))}
     seen={}
     try:
         for word in words:
             try:
-                payload=client.get('keyword_search',{'q':word,'search_type':search_type,'limit':limit,'fields':'id,username,text,timestamp,permalink'})
-                if not isinstance(payload.get('data'),list):raise SafeError('Unexpected keyword_search response')
+                payload=client.get('keyword_search',{'q':word,'search_type':search_type,'limit':limit,'fields':SEARCH_FIELDS[fields]})
+                if not isinstance(payload.get('data'),list):raise PublicAPIError('Unexpected keyword_search response','response_format',200)
                 result['queries'].append({'keyword':word,'success':True,'returned':min(len(payload['data']),limit)})
                 for row in payload['data'][:limit]:
                     if not isinstance(row,dict) or not isinstance(row.get('id'),str):continue
@@ -49,13 +60,17 @@ def run_check(token,key,catalog,words,path='private/search-check.enc',transport=
                     if word not in post['search_keywords']:post['search_keywords'].append(word)
             except SafeError as error:
                 result['queries'].append({'keyword':word,'success':False})
-                result['errors'].append({'reason':str(error)})
+                result['errors'].append({'reason':str(error),'diagnostic':error.diagnostic if isinstance(error,PublicAPIError) else {'kind':'local_validation','http_status':None,'api_code':None,'api_subcode':None}})
                 # This is a connection test: stop on permission, authentication or rate failure.
                 break
     finally:
         result['posts']=list(seen.values())
         PrivateState._write(output,cipher.encrypt(json.dumps(result,ensure_ascii=False).encode()))
-    return {'successful_queries':sum(q['success'] for q in result['queries']), 'posts':len(result['posts']), 'errors':len(result['errors'])}
+    summary={'successful_queries':sum(q['success'] for q in result['queries']), 'posts':len(result['posts']), 'errors':len(result['errors'])}
+    if result['errors']:
+        summary['diagnostics']=[error['diagnostic'] for error in result['errors']]
+        summary['request']=result['request']
+    return summary
 
 
 def decrypt_report(source,key,output='private/search-check.md'):
@@ -71,8 +86,12 @@ def decrypt_report(source,key,output='private/search-check.md'):
         lines.append('|'+ '/'.join(post['themes'])+'|'+str(post['characters'])+'|'+'|'.join(numbers)+'|'+post['url']+'|')
     if not result['posts']:lines.append('\n有効な公開投稿が0件でした。検索の成功と0件の結果は両立します。')
     lines.append('\n## 認証・権限・接続の結果')
+    if result.get('request'):lines.append('安全なリクエスト設定：'+json.dumps(result['request'],ensure_ascii=False))
     for query in result['queries']:lines.append(f"- {query['keyword']}：{'成功' if query['success'] else '失敗'}")
-    for error in result['errors']:lines.append('- '+error['reason'])
+    for error in result['errors']:
+        lines.append('- '+error['reason'])
+        if error.get('diagnostic'):lines.append('  '+json.dumps(error['diagnostic'],ensure_ascii=False))
+        else:lines.append('  旧履歴：HTTPステータス・APIコードは記録されていません。推測できません。')
     output.parent.mkdir(parents=True,exist_ok=True)
     output.write_text('\n'.join(lines)+'\n',encoding='utf-8')
     return {'posts':len(result['posts']),'errors':len(result['errors'])}
@@ -88,16 +107,30 @@ def main():
     parser.add_argument('--search-type',choices=['RECENT','TOP'],default='RECENT')
     parser.add_argument('--limit',type=int,default=10)
     parser.add_argument('--decrypt',action='store_true')
+    parser.add_argument('--validate-key',action='store_true',help='Validate local encryption prerequisites without API requests')
+    parser.add_argument('--diagnose-config',action='store_true',help='Inspect safe configuration only; no API requests')
+    parser.add_argument('--api-version',default=API_VERSION)
+    parser.add_argument('--fields',choices=tuple(SEARCH_FIELDS),default='standard')
     parser.add_argument('--source',default='private/search-check.enc')
     args=parser.parse_args()
     try:
         key=os.environ.get('THREADS_STATE_KEY','')
+        if args.validate_key:
+            PrivateState(key=key)
+            print('Encryption prerequisites passed; no API request made')
+            return 0
         if args.decrypt:
             result=decrypt_report(args.source,key)
         else:
             catalog=read_json(args.catalog)
             words=select_keywords(catalog,args.group,args.offset,args.count,args.keyword)
-            result=run_check(os.environ.get('THREADS_ACCESS_TOKEN'),key,catalog,words,search_type=args.search_type,limit=args.limit)
+            if args.diagnose_config:
+                PrivateState(key=key)
+                MarketClient(os.environ.get('THREADS_ACCESS_TOKEN'),api_version=args.api_version)
+                if not 1<=args.limit<=25:raise SafeError('Invalid read-only search limits')
+                result={**request_diagnostic(args.api_version,args.search_type,args.limit,args.fields,len(words)), 'token_present':True,'network_requests':0}
+            else:
+                result=run_check(os.environ.get('THREADS_ACCESS_TOKEN'),key,catalog,words,search_type=args.search_type,limit=args.limit,api_version=args.api_version,fields=args.fields)
         # Counts only: no token, raw errors, response bodies, handles or URLs in Actions logs.
         print(json.dumps(result))
         return 1 if result.get('errors') else 0
