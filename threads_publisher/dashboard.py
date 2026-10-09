@@ -32,7 +32,48 @@ def main():
         except SafeError:return default
     tabs=st.tabs(['はじめに','競合登録','情報源','レポート・ChatGPT','投稿案・承認','予約・書き出し','履歴・エラー'])
     with tabs[0]:
-        st.markdown('1. 既存の暗号化状態を読み込む\n2. 公開競合URL・CSVを登録する\n3. 保存済み実績から週報を作る\n4. プロンプトをChatGPTへコピーする\n5. 21本を取り込み、確認・承認する\n6. 承認済みだけ予約し、Secret用JSONを書き出す')
+        from threads_publisher.simple_posting import weekly_prompt,review_digest,approve_text_batch,schedule_text_batch
+        st.subheader('かんたん投稿：競合分析なしで始める')
+        st.markdown('① ChatGPTで21本作る → ② 貼り付けて確認・承認 → ③ 予約する。文章作成はChatGPT Plusで行い、有料AI APIは使いません。')
+        today=datetime.now(ZoneInfo('Asia/Tokyo')).date()
+        week=st.date_input('投稿を始める日',today+timedelta(days=(7-today.weekday())%7 or 7),key='simple-week')
+        st.code(weekly_prompt(week.isoformat()),language='text')
+        pasted=st.text_area('ChatGPTの21本JSONをここへ貼り付け',key='simple-json',height=150)
+        simple_file=st.file_uploader('または投稿案JSONを選ぶ',type=['json'],key='simple-upload')
+        if st.button('21本を下書きとして取り込む',disabled=not pasted.strip() and simple_file is None):
+            payload=simple_file.getvalue() if simple_file else pasted.encode()
+            action(lambda:operator.import_drafts(payload,week.isoformat(),True))
+        posts=data('private/posts.json',{'posts':[]})['posts']
+        pending=[p for p in posts if p.get('post_type')=='text' and p.get('publish_status') in ('draft','pending_approval')]
+        if pending:
+            choices=st.multiselect('今回確認する投稿', [p['id'] for p in pending],default=[p['id'] for p in pending])
+            selected=[p for p in pending if p['id'] in choices]
+            unsaved=False
+            for post in selected:
+                st.markdown('**'+post['id']+' / '+str(post.get('planned_at',''))+'**')
+                body=st.text_area('本文（編集可能）',post['text'],key='simple-body-'+post['id'])
+                unsaved=unsaved or body != post['text']
+                if st.button('本文を保存',key='simple-save-'+post['id']):action(lambda:operator.edit(post['id'],{'text':body}))
+            if unsaved:st.warning('編集した本文を保存してから承認してください。')
+            digest=review_digest(selected)
+            confirmed=st.checkbox('選んだ全投稿の本文・根拠・日時を確認しました',key='simple-confirm-'+digest)
+            if st.button('確認した投稿をまとめて承認',disabled=not confirmed or not selected or unsaved):
+                action(lambda:approve_text_batch(root/'private/posts.json',choices,digest))
+        approved=[p for p in posts if p.get('post_type')=='text' and p.get('approved') is True and p.get('publish_status')=='approved']
+        if approved:
+            choices=st.multiselect('承認済み投稿を予約',[p['id'] for p in approved],default=[p['id'] for p in approved],key='simple-schedule-ids')
+            if st.button('承認済み投稿をまとめて予約',disabled=not choices):
+                action(lambda:schedule_text_batch(root/'private/posts.json',choices,read_json(root/'config/posting_schedule.json')['slots'].values()))
+        scheduled=[p for p in posts if p.get('publish_status')=='scheduled']
+        st.dataframe([{'投稿ID':p['id'],'予約日時':p.get('scheduled_at'),'承認済み':p.get('approved',False)} for p in scheduled],width='stretch')
+        if scheduled and st.button('GitHub用の予約ファイルを作る'):
+            from threads_publisher.private_state import export_queue
+            action(lambda:export_queue('private/posts.json','private/approved-posts.json'))
+        for index in range(1,5):
+            path=root/'private'/('approved-posts.json' if index==1 else f'approved-posts-{index}.json')
+            if path.exists():st.download_button('予約ファイル '+str(index)+' を保存',path.read_bytes(),path.name,key='simple-export-'+str(index))
+        st.info('下書き・承認・予約は暗号化キーなしで操作できます。実公開には、同じ新キーで本番履歴を保護し、GitHubの予約Secretsと公開スイッチを設定する必要があります。未承認の投稿は公開しません。')
+        st.caption('未公開本文はprivateフォルダに保存します。他人と共有しないでください。既存の暗号化データには触れません。詳細はdocs/simple-posting.md。')
         st.info('毎日08:00・19:00・22:00（日本時間）。定期実行と自動公開は初期無効です。')
         if st.button('既存の暗号化状態を読み込む'):action(operator.restore)
         st.caption('THREADS_STATE_KEYは起動環境へ安全に注入します。キーやトークンを画面へ入力・表示しません。')
