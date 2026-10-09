@@ -94,3 +94,5 @@ ChatGPT Plusで週21本を作り、日本時間08:00・19:00・22:00の通常文
 最新の運用方針は就活・転職・AI・仕事術・お金・節約、08:00・19:00・22:00 JSTです。[日本語管理画面とGitHubでの操作手順](docs/operations-dashboard.md)を参照してください。情報源の調査状況は[調査メモ](docs/source-research.md)に記載し、利用条件未確認の配信元は自動登録していません。
 
 Windowsでは `start_dashboard.bat` をダブルクリックして起動できます。[Windows初心者向け手順](docs/windows-dashboard.md)を参照してください。
+
+暗号化キーを紛失した場合は、旧Secretを上書きせず、[キー移行の準備手順](docs/state-key-migration.md)を確認してください。手動専用の準備機能は本番ファイル・Secretsを切り替えません。
