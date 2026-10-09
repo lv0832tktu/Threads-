@@ -81,7 +81,7 @@ def generate_report(history, insights_path, market_path, output_dir='reports', n
             latest[key] = snap
     taxonomy = json.loads((Path(__file__).resolve().parents[1]/'config/keywords.json').read_text(encoding='utf-8'))
     allowed_words = {w for group in taxonomy.get('groups',[]) for w in group.get('keywords',[]) if isinstance(w,str)}
-    allowed_categories = {'AI','AI活用','仕事術','お金','節約','就活','転職'} | {g.get('id') for g in taxonomy.get('groups',[])} | {g.get('theme') for g in taxonomy.get('groups',[])}
+    allowed_categories = {'AI','AI活用','仕事術','お金','節約','就活・転職','就活','転職'} | {g.get('id') for g in taxonomy.get('groups',[])} | {g.get('theme') for g in taxonomy.get('groups',[])}
     public_posts, reply_metrics = [], []
     reporting_jobs = list(jobs)
     existing = {(str(j['account']),str(j.get('remote_id'))) for j in reporting_jobs if j.get('status')=='published'}
