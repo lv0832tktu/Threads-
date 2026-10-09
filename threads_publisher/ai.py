@@ -1,6 +1,6 @@
 """Draft generation with durable request reservations and atomic JSON writes."""
 import json
-import fcntl
+from . import file_lock as fcntl
 import os
 import sqlite3
 import tempfile
@@ -26,11 +26,12 @@ def atomic_json(path, value):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        if os.name != 'nt':
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)

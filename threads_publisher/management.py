@@ -3,7 +3,7 @@
 JSON edits use a shared advisory lock, atomic replacement and fsync. Dashboard
 changes must be reviewed and committed to GitHub before Actions can see them.
 """
-import fcntl
+from . import file_lock as fcntl
 import json
 import os
 import sqlite3
@@ -32,11 +32,12 @@ def _edit_json(path, transform):
                 os.fsync(output.fileno())
             os.chmod(temporary, path.stat().st_mode & 0o777)
             os.replace(temporary, path)
-            directory = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            if os.name != 'nt':
+                directory = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)

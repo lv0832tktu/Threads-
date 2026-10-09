@@ -11,7 +11,7 @@
 
 ## 管理画面の起動
 
-Python 3.12以上・Linux/macOS/WSLの例です。WindowsはWSLを利用してください（排他ロックにfcntlを使います）。
+以下はPython 3.12以上・Linux/macOS/WSLの例です。Windowsでは [ダブルクリック起動手順](windows-dashboard.md) を利用できます。
 
 ```bash
 git clone https://github.com/lv0832tktu/Threads-.git
@@ -58,3 +58,5 @@ RSSの話題変化は観測した公式記事のキーワード件数の前週�
 ```json
 {"posts":[{"id":"week-2026-10-12-01","post_type":"text","category":"AI","theme":"AI活用","keywords":["AI活用"],"text":"人間が確認した投稿本文","approved":false,"approval_status":"pending_approval"}]}
 ```
+
+Windows専用の起動方法は [Windows操作マニュアル](windows-dashboard.md) を参照してください。Windowsのファイルロックにも対応しました。

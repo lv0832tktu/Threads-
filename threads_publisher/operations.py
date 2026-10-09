@@ -1,5 +1,5 @@
 """Local operation serialization, safe failure summaries and token expiry planning."""
-import fcntl
+from . import file_lock as fcntl
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
