@@ -22,6 +22,16 @@ keyword_searchには `threads_keyword_search`、基本読取には `threads_basi
 鍵の作り方と保管は [運用ガイド](automation-guide.md) を参照してください。鍵をチャットへ貼らないでください。
 自動公開・定期分析のVariablesを有効にする必要はありません。
 
+### 暗号化の事前確認に失敗した場合
+
+`requirements-private.txt` にcryptographyがあり、Actionsは同じPythonでインストールします。検索の前に `--validate-key` で依存と鍵を確認し、API通信なしで失敗原因を判別します。
+
+- `dependency missing`：実行Pythonにcryptographyがありません。インストールステップの成功と選択ブランチの設定を確認します。
+- `THREADS_STATE_KEY is missing or unavailable`：Settings → Secrets and variables → Actions → **Repository secrets** に、正確な名前で登録します。Variablesは代用できません。Environment secretだけに登録している場合、このジョブはenvironmentを指定していないため参照できません。組織Secretならこのリポジトリへのアクセス許可も確認します。
+- `THREADS_STATE_KEY is invalid`：既存のFernet鍵を引用符・空白・改行なしで設定します。既存暗号化履歴がある場合、新しい鍵へ置き換えないでください。
+
+鍵やトークンの値はログ・チャットへ貼りません。Secretsの実際の登録状況はコードの参照だけでは確認できません。修正確認のためにActionsを実行すると検索が始まるため、今回のローカル検証では実行しません。
+
 ## GitHubでの手動実行（レビュー・マージ後）
 
 1. Actions → **Threads keyword search connection check (manual only)** → Run workflowを開きます。
@@ -71,3 +81,65 @@ GitHub Actionsは標準ランナーでも契約の無料枠を超えると料金
 
 7件の追加オフラインテストで、全語句の登録、検索語選択・件数制限、GETのみ、URLエンコード、暗号化、権限・期限・レートエラー、空結果、重複、本文非保存、復号を検証しました。
 既存69件を含む76件が成功し、全ワークフローのactionlintも成功しました。実APIの接続結果はまだ未検証です。
+
+## successful_queries=0 / errors=1 の診断
+
+この結果は最初の検索で停止したことを示すだけで、HTTPステータスや原因までは特定できません。鍵検証とテストが成功しても、Threadsの検索権限・トークンの有効性を保証しません。
+
+追加した診断は以下だけをログへ出します。HTTP応答本文、Metaのmessage/type/trace ID、トークン、Authorization、完全な要求URL、検索本文は出しません。
+
+- HTTPステータス（接続障害で応答がない場合はnull）
+- 固定の安全なエラー種別
+- 数値のAPI code / error_subcode（取得できない場合はnull）
+- GET、keyword_search、APIバージョン、search_type、件数上限、フィールド名、検索語の件数
+
+| 種別 | 判断できること／確認事項 |
+| --- | --- |
+| authentication | HTTP401またはAPI code190。トークン無効・失効等を確認。期限切れと決めつけない |
+| permission_or_access | HTTP403またはcode10/200。threads_keyword_search、アプリのアクセスレベル・審査・利用者の許可を確認 |
+| request_or_access | HTTP400。パラメータ、対応フィールド、バージョン、アクセス条件を確認。これだけで権限不足と断定しない |
+| rate_limit | HTTP429または既知のレート制限code。自動リトライせず、利用枠と待機を確認 |
+| api_error | その他のAPI失敗。HTTP5xxなども含む。応答の数値情報で追加確認 |
+| connection_error | 接続失敗。HTTPステータスは推測しない |
+| response_format | JSON形式／data配列が想定外。応答内容そのものは保存しない |
+| redirect_refused | 認証ヘッダーを外部へ転送しないため拒否 |
+
+数値コードは手掛かりであり、権限やパラメータの正しさを検証した結果ではありません。成功HTTPのerrorオブジェクトも失敗として扱います。
+
+### トークン・権限の確認
+
+Meta公式のアプリ設定とアクセストークンの管理画面で確認します。トークンはチャットや公開ログへ貼らず、Threads用であること、対象アカウント、期限、実際に付与された `threads_basic`・`threads_keyword_search` を確認してください。接続確認 `/me` が成功してもkeyword_searchの許可は別です。アプリに権限を追加しても古いトークンへの付与を保証しないため、必要なら再認証し、その後既存Secretを更新します。開発モードでは利用者のアプリロール、公開運用ではアクセスレベル・レビュー要件も確認します。非公式APIへの切替はしません。
+
+公式確認先：
+
+- https://developers.facebook.com/docs/threads/keyword-search/
+- https://developers.facebook.com/docs/threads/get-started/
+- https://developers.facebook.com/docs/threads/changelog/
+
+公式ドキュメントは本環境で取得制限があったため、利用者の開発者画面で現行条件を確認する必要があります。APIバージョンは既存の `v1.0` を維持し、対応を確認せずGraph APIの別バージョンへ変更しません。
+
+### 検索パラメータ
+
+`q` は設定済みカタログの語をURLエンコードし、`search_type` はRECENTまたはTOP、`limit` は1〜25（通常10）。標準フィールドはid,username,text,timestamp,permalinkです。明示的な診断用minimalプリセットはusernameを除きますが、権限エラー時に自動切替・再取得しません。語句そのものや完全URLは診断ログに出ません。ページングなし、最初の失敗で停止します。
+
+### 通信なしの設定診断
+
+依存を導入したローカル環境で、環境変数を安全に注入して実行します。
+
+```bash
+.venv/bin/python -m threads_publisher.search_check --diagnose-config
+```
+
+`token_present` は存在確認のみ、`granted_permissions` は `not_verified` です。鍵形式、カタログ・件数・APIバージョン構文を検査しますが、認証やサーバー受付は検証しません。HTTP通信はありません。手動Actionsにもoperation=diagnose-configを用意しましたが、この開発作業ではActionsを実行しません。検索のoperation=searchは実データ取得を伴うため、承認後だけ実行します。
+
+### 暗号化された失敗履歴の確認
+
+1. 失敗したActionsのArtifactsから暗号化ファイルをダウンロードします。これによって新しいThreads検索は開始されません。
+2. Git管理対象外の `private/search-check.enc` に置きます。
+3. その実行で使用した同じ `THREADS_STATE_KEY` を安全に環境へ注入します。履歴を読むために鍵を新規生成・置換しないでください。
+4. `.venv/bin/python -m threads_publisher.search_check --decrypt` を実行します。通信せず、`private/search-check.md` に結果と診断を復号します。
+5. HTTPステータス、安全な種別、数値コード、APIバージョン／フィールドを確認します。共有するなら診断部分だけを使い、鍵・トークン・未公開内容・全ファイルを公開しないでください。
+
+GitHubは保存済みSecretの値を再表示しません。手元に同じ鍵の控えがない場合、Secretを安全に注入できる環境で復号する必要があります。鍵を取り出すためにログへ出したり、古い履歴を新しい鍵で復号しようとしたりしないでください。
+
+旧Artifactには安全な理由文しかなく、HTTPステータスや数値コードを後から復元できません。旧履歴はその旨を表示します。Artifactがない・保持期限切れの場合も推測できません。新しい診断情報が必要な実検索は別途承認後に行ってください。

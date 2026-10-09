@@ -14,9 +14,15 @@ class PrivateState:
     def __init__(self, root='private', encrypted='state/private-state.enc', key=None):
         try:
             from cryptography.fernet import Fernet
-            self.cipher=Fernet((key or os.environ.get('THREADS_STATE_KEY','')).encode())
-        except (ImportError, ValueError, TypeError):
-            raise SafeError('Private state needs the free cryptography dependency and THREADS_STATE_KEY Secret') from None
+        except ImportError:
+            raise SafeError('Private state dependency missing; install requirements-private.txt with the Python interpreter running this command') from None
+        value=key or os.environ.get('THREADS_STATE_KEY','')
+        if not value:
+            raise SafeError('THREADS_STATE_KEY is missing or unavailable; configure the GitHub Actions repository Secret with this exact name')
+        try:
+            self.cipher=Fernet(value.encode())
+        except (ValueError, TypeError, AttributeError):
+            raise SafeError('THREADS_STATE_KEY is invalid; use the existing Fernet key without surrounding quotes or extra whitespace; do not replace a key used by encrypted history') from None
         self.root,self.encrypted=Path(root),Path(encrypted)
 
     def restore(self, legacy='state/history.sqlite3'):
