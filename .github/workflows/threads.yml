@@ -4,7 +4,7 @@ on:
     inputs:
       operation:
         type: choice
-        options: [check, publish]
+        options: [check, publish, publish-private, resume-private]
         default: check
         description: Connection check or explicitly approved publication
       post_id:
@@ -33,7 +33,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install free test dependency
-        run: python -m pip install -r requirements-private.txt
+        run: python -m pip install -r requirements-private.txt -r requirements-media.txt
       - name: Tests
         run: python -m unittest discover -s tests -v
       - name: Connection check
@@ -53,7 +53,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install free test dependency
-        run: python -m pip install -r requirements-private.txt
+        run: python -m pip install -r requirements-private.txt -r requirements-media.txt
       - name: Tests
         run: python -m unittest discover -s tests -v
       - name: Configure history author
@@ -63,6 +63,7 @@ jobs:
       - name: Approved publication
         env:
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
           THREADS_PUBLISH_ENABLED: ${{ vars.THREADS_PUBLISH_ENABLED }}
           POST_ID: ${{ inputs.post_id }}
           APPROVED_POST_ID: ${{ inputs.approved_post_id }}
@@ -70,3 +71,44 @@ jobs:
       - name: Failure guidance
         if: failure()
         run: echo 'Publication failed or is uncertain. Inspect pending history before retrying.' >> "$GITHUB_STEP_SUMMARY"
+  private-publish:
+    if: inputs.operation == 'publish-private' || inputs.operation == 'resume-private'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install free dependencies
+        run: python -m pip install -r requirements-private.txt -r requirements-media.txt
+      - name: Offline tests
+        run: python -m unittest discover -s tests -v
+      - name: Configure state author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Publish one explicitly approved private post
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
+          THREADS_SCHEDULE_JSON: ${{ secrets.THREADS_SCHEDULE_JSON }}
+          THREADS_SCHEDULE_JSON_2: ${{ secrets.THREADS_SCHEDULE_JSON_2 }}
+          THREADS_SCHEDULE_JSON_3: ${{ secrets.THREADS_SCHEDULE_JSON_3 }}
+          THREADS_SCHEDULE_JSON_4: ${{ secrets.THREADS_SCHEDULE_JSON_4 }}
+          THREADS_PUBLISH_ENABLED: ${{ vars.THREADS_PUBLISH_ENABLED }}
+          POST_ID: ${{ inputs.post_id }}
+          APPROVED_POST_ID: ${{ inputs.approved_post_id }}
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          if [ "$OPERATION" = resume-private ]; then
+            python -m threads_publisher publish --private-state --from-secret --persist-git --post-id "$POST_ID" --approved-post-id "$APPROVED_POST_ID" --resume
+          else
+            python -m threads_publisher publish --private-state --from-secret --persist-git --post-id "$POST_ID" --approved-post-id "$APPROVED_POST_ID"
+          fi
+      - name: Failure guidance
+        if: failure()
+        run: echo 'Private publication failed or is uncertain. Preserve encrypted history and inspect it before retrying.' >> "$GITHUB_STEP_SUMMARY"

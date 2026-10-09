@@ -7,7 +7,7 @@ from pathlib import Path
 from .core import SafeError
 from .storage import atomic_json
 
-FILES=('history.sqlite3','insights.json','weekly-report.md','improvement.json','report-status.json','market-data.json','market-report.md')
+FILES=('history.sqlite3','insights.json','weekly-report.md','improvement.json','report-status.json','market-data.json','market-report.md','keyword-history.json','keyword-analysis.json','followers.json','manual-public-observations.json')
 
 
 class PrivateState:
@@ -89,24 +89,71 @@ class PrivateState:
         self._write(self.encrypted,self.cipher.encrypt(plaintext))
 
 
+def validated_queue(posts):
+    """Normalize typed queue, binding human approval to reviewed content."""
+    from .schema import normalize_post, approval_digest
+    if not isinstance(posts, list):
+        raise SafeError('Approved queue must contain posts')
+    prepared = []; ids = set(); fingerprints = set()
+    for raw in posts:
+        post = normalize_post(raw)
+        if post.get('approved') is not True or not post.get('scheduled_at'):
+            raise SafeError('Only approved scheduled posts may enter the queue')
+        if post.get('post_type') in ('image','carousel') and post.get('rights_confirmed') is not True:
+            raise SafeError('Image rights must be confirmed')
+        # Typed content requires approval binding; legacy text remains compatible.
+        if ('post_type' in raw or post.get('approval_digest')) and post.get('approval_digest') != approval_digest(post):
+            raise SafeError('Content approval digest is missing or changed')
+        fingerprint=json.dumps({key:post.get(key) for key in ('text','thread_items','image_urls')},ensure_ascii=False,sort_keys=True)
+        if post['id'] in ids or fingerprint in fingerprints:
+            raise SafeError('Duplicate approved queue')
+        if 'post_type' not in raw and not raw.get('approval_digest'):
+            post.pop('post_type', None)  # Preserve legacy dispatch without inventing human approval.
+        ids.add(post['id']); fingerprints.add(fingerprint); prepared.append(post)
+    return prepared
+
+
 def materialize_secret_queue(target='private/approved-posts.json'):
-    # Never print the JSON or write it into the checkout's tracked posts directory.
+    from .weekly import private_path
     try:
-        document=json.loads(os.environ.get('THREADS_SCHEDULE_JSON',''))
-        posts=document['posts']
-        if not isinstance(posts,list): raise ValueError()
-        ids=set(); texts=set()
-        from .editor import normalize
-        from .scheduler import parse_time
-        for post in posts:
-            if post.get('approved') is not True or not isinstance(post.get('id'),str) or not post['id']:
-                raise ValueError()
-            text=post['text']
-            if not isinstance(text,str) or not 1<=len(text)<=500: raise ValueError()
-            if post['id'] in ids or normalize(text) in texts: raise ValueError()
-            parse_time(post['scheduled_at'])
-            ids.add(post['id']); texts.add(normalize(text))
-        atomic_json(target,document)
-        return len(posts)
+        posts=[]
+        for suffix in ('','_2','_3','_4'):
+            value=os.environ.get('THREADS_SCHEDULE_JSON'+suffix)
+            if value:
+                document=json.loads(value)
+                if not isinstance(document['posts'],list): raise ValueError()
+                posts.extend(document['posts'])
+        if not posts: raise ValueError()
+        prepared=validated_queue(posts)
+        atomic_json(private_path(target),{'posts':prepared})
+        return len(prepared)
     except (ValueError, TypeError, KeyError, SafeError):
         raise SafeError('Approved schedule Secret is missing or invalid; no queue logged or published') from None
+
+
+def export_queue(source, target, limit=45000):
+    from .weekly import private_path
+    from .storage import read_json
+    source,target=private_path(source),private_path(target)
+    selected=[post for post in read_json(source)['posts'] if post.get('approved') is True and post.get('scheduled_at')]
+    prepared=validated_queue(selected)
+    chunks=[]; current=[]
+    for post in prepared:
+        candidate=current+[post]
+        if len((json.dumps({'posts':candidate},ensure_ascii=False,indent=2)+'\n').encode())>limit:
+            if not current: raise SafeError('A post exceeds the GitHub Secret size limit')
+            chunks.append(current); current=[post]
+            if len((json.dumps({'posts':current},ensure_ascii=False,indent=2)+'\n').encode())>limit:
+                raise SafeError('A post exceeds the GitHub Secret size limit')
+        else: current=candidate
+    if current or not chunks: chunks.append(current)
+    if len(chunks)>4: raise SafeError('Queue exceeds four GitHub Secret chunks; shorten the batch')
+    for index,chunk in enumerate(chunks):
+        path=target if index==0 else target.with_name(target.stem+f'-{index+1}'+target.suffix)
+        atomic_json(path,{'posts':chunk})
+    # Clear stale optional chunks so a later smaller export cannot accidentally
+    # reuse old approved content when the operator copies each output.
+    for index in range(len(chunks),4):
+        path=target.with_name(target.stem+f'-{index+1}'+target.suffix)
+        atomic_json(path,{'posts':[]})
+    return {'approved':len(prepared),'chunks':len(chunks)}

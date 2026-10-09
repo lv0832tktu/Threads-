@@ -42,5 +42,8 @@
       "quotes"
     ]
   },
-  "mode": "chatgpt-plus"
+  "mode": "chatgpt-plus",
+  "media": {
+    "allowed_hosts": []
+  }
 }
