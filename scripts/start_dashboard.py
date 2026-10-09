@@ -35,16 +35,19 @@ def main():
         if not sys.stdin.isatty():
             print('秘密入力が可能なコマンド画面から起動してください。')
             return 1
-        print('既存のTHREADS_STATE_KEYを貼り付けてEnter（表示・保存しません）。')
+        print('投稿案作成だけなら、そのままEnterで開始できます（キー不要）。')
+        print('履歴・分析を扱う場合は既存のTHREADS_STATE_KEYを入力します（表示・保存しません）。')
         print('GitHub Secretsの値は読み戻せません。登録時に保管した同じキーを使用してください。')
         key = getpass.getpass('暗号化キー: ').strip()
         try:
             from cryptography.fernet import Fernet
-            Fernet(key.encode())
+            if key:
+                Fernet(key.encode())
         except (ValueError, TypeError):
             print('キーの形式を確認してください。既存の履歴用キーを新規生成しないでください。')
             return 1
-        os.environ['THREADS_STATE_KEY'] = key
+        if key:
+            os.environ['THREADS_STATE_KEY'] = key
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
         port = probe.getsockname()[1]

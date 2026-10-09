@@ -96,3 +96,5 @@ ChatGPT Plusで週21本を作り、日本時間08:00・19:00・22:00の通常文
 Windowsでは `start_dashboard.bat` をダブルクリックして起動できます。[Windows初心者向け手順](docs/windows-dashboard.md)を参照してください。
 
 暗号化キーを紛失した場合は、旧Secretを上書きせず、[キー移行の準備手順](docs/state-key-migration.md)を確認してください。手動専用の準備機能は本番ファイル・Secretsを切り替えません。
+
+競合分析より先に投稿を始める場合は、[かんたん投稿手順](docs/simple-posting.md)を参照してください。キーなしで下書きを準備でき、通常文章21本をまとめて確認・承認・予約できます。実公開のスイッチは初期無効です。
