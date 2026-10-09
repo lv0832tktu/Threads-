@@ -35,7 +35,7 @@ def atomic_json(path, value):
 def git_persist(paths):
     """No force push; a conflict stops work before a potentially unsafe retry."""
     allowed = {'state/history.sqlite3', 'state/private-state.enc'}
-    report_pattern = r'reports/(?:latest|weekly/\d{4}-\d{2}-\d{2})\.(?:md|json)'
+    report_pattern = r'reports/(?:latest|weekly/\d{4}-\d{2}-\d{2})(?:-prompt)?\.(?:md|json|csv)'
     if not paths or any(path not in allowed and not re.fullmatch(report_pattern, path) for path in paths):
         raise SafeError('Refusing persistence outside known state files')
     try:

@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "daily_request_limit": 3,
+  "allowed_hosts": [],
+  "sources": []
+}

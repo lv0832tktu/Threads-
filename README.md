@@ -88,3 +88,5 @@ ChatGPT Plusで週21本を作り、日本時間08:00の通常文章、12:00の�
 [投稿作成プロンプト](prompts/weekly-content-generation.md) と最新週報をChatGPT Plusへ渡し、翌週の文章と画像案を作成します。
 
 新しい予約・日次分析・日曜21:00 JST週報のActionsは初期無効です。週報は `reports/weekly/` と `reports/latest.md`・`latest.json` に公開可能な集計だけを保存し、本文や詳細履歴は暗号化します。既存の手動接続確認と投稿履歴を維持します。
+
+検索権限未承認の運用では [手動競合・許可済み公式フィードの週次改善](docs/manual-market-trends.md) を利用します。キーワード検索を無効のまま、自分のInsightsと手動公開URL／CSV、許可したRSS／Atom／公式JSON配信を週報へ整理し、Markdown・CSV・ChatGPT Plus向け21本作成プロンプトを生成します。新しい定期起動や有料AI APIは追加しません。
