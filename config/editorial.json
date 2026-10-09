@@ -1,6 +1,28 @@
 {
-  "genres": ["AI", "仕事術", "お金", "節約"],
-  "keyword_groups": ["ai_tools", "ai_general", "ai_uses", "work_efficiency", "work_skills", "household", "investing", "taxes", "points", "learning", "hybrid"],
+  "genres": [
+    "就活・転職",
+    "AI",
+    "仕事術",
+    "お金",
+    "節約"
+  ],
+  "keyword_groups": [
+    "ai_tools",
+    "ai_general",
+    "ai_uses",
+    "work_efficiency",
+    "work_skills",
+    "household",
+    "investing",
+    "taxes",
+    "points",
+    "learning",
+    "hybrid",
+    "career",
+    "job_hunting",
+    "career_change",
+    "career_details"
+  ],
   "paid_ai_api_enabled": false,
   "keyword_search_enabled": false
 }

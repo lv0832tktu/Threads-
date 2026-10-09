@@ -51,7 +51,7 @@ def save_report(report, destination, output_dir):
             row=[post['alias'],post['post_type'],post['category'],post.get('theme','未分類'),post['published_at'],post.get('characters'),*[post['metrics'].get(name) for name in ('views','likes','replies','reposts','quotes')],post['reaction_rate'],post['metrics_as_of']]
             writer.writerow(['取得不可' if value is None else "'"+value if isinstance(value,str) and value.startswith(('=','+','-','@')) else value for value in row])
         atomic(target.with_suffix('.csv'),stream.getvalue())
-        prompt='# 翌週21本をChatGPT Plusで作成する指示\n\n'+markdown+'\n\nこのレポートと prompts/weekly-content-generation.md を参照し、翌週の月曜日を確認してください。AI・仕事術・お金・節約を扱い、08:00・19:00・22:00に各1本、週21本（初期は通常文章21本、人間の選択時のみ文章・画像・ツリー各7本）をAsia/Tokyoで作成します。取得不可を推測せず、競合をコピーせず、公式出典と確認日を確認します。全件未承認のJSONと画像作成プロンプトを出力してください。有料AI APIは呼び出しません。\n'
+        prompt='# 翌週21本をChatGPT Plusで作成する指示\n\n'+markdown+'\n\nこのレポートと prompts/weekly-content-generation.md を参照し、翌週の月曜日を確認してください。就活・転職・AI・仕事術・お金・節約を扱い、08:00・19:00・22:00に各1本、週21本（初期は通常文章21本、人間の選択時のみ文章・画像・ツリー各7本）をAsia/Tokyoで作成します。取得不可を推測せず、競合をコピーせず、公式出典と確認日を確認します。全件未承認のJSONと画像作成プロンプトを出力してください。有料AI APIは呼び出しません。\n'
         atomic(target.with_name(target.name+'-prompt').with_suffix('.md'),prompt)
 
 
@@ -164,10 +164,11 @@ def generate_report(history, insights_path, market_path, output_dir='reports', n
         except (OSError,ValueError,TypeError,KeyError,AttributeError):
             pass
     caution = '少数データでは有効性を断定しません。投稿経過時間・閲覧母数・話題の違いがあり、因果関係は未検証です。'
-    topics = ['AI回答の根拠と誤りを確認する方法','AIで資料作成を整理する手順','初心者が無料AIを比較する基準','タスクの優先順位と仕事の段取り','会議・メールの時短と情報管理','固定費とサブスクの見直し手順','家計と生活防衛資金を整理する方法','NISA・税制を公式情報で確認する手順','食費と通信費の節約チェックリスト','AIを使う時間と費用の効果検証']
+    topics = ['自己分析を具体的な経験から整理する手順','企業研究と面接準備のチェックリスト','転職時に働き方と条件を確認する方法','AI回答の根拠と誤りを確認する方法','AIで資料作成を整理する手順','初心者が無料AIを比較する基準','タスクの優先順位と仕事の段取り','会議・メールの時短と情報管理','固定費とサブスクの見直し手順','家計と生活防衛資金を整理する方法','NISA・税制を公式情報で確認する手順','食費と通信費の節約チェックリスト','AIを使う時間と費用の効果検証']
     market = market_summary(market_path, allowed_words, allowed_categories, public_posts, now, start, cutoff)
     market['keyword_search']='権限未承認のため無効。手動登録と許可済み公式フィードのみを利用'
     market['permitted_trends']=trend_summary(Path(market_path).parent/'trend-data.json' if market_path else None,allowed_words,start,cutoff,now)
+    topics = topics[:10]
     themes = [f'仮説{i+1}：{topic}を具体的な一歩に分けると読者が行動しやすい。要検証。' for i,topic in enumerate(topics)]
     themes = [{'hypothesis': theme, 'source_urls': [], 'evidence':'要検証・データ不足時の編集仮説'} for theme in themes]
     editorial=json.loads((Path(__file__).resolve().parents[1]/'config/editorial.json').read_text())

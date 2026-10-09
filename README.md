@@ -82,7 +82,7 @@ ChatGPT Plusで週21本を作り、日本時間08:00・19:00・22:00の通常文
 指定されたAI活用・仕事術・お金・掛け合わせ等の検索語を使う手動接続確認は [keyword_search接続テスト](docs/keyword-search-check.md) を参照してください。
 既存トークンを使うGET専用テストで、結果は暗号化Artifactへ保存します。定期実行は追加しません。
 
-## 管理画面とAI・仕事術・お金・節約運用
+## 管理画面と就活・転職・AI・仕事術・お金・節約運用
 
 [週21本の運用手順](docs/career-operations.md) に、JSON/CSVの取り込み、編集・承認・予約、画像準備、ツリーの安全な復旧、Secrets設定、料金と制約をまとめました。
 [投稿作成プロンプト](prompts/weekly-content-generation.md) と最新週報をChatGPT Plusへ渡し、翌週の文章と画像案を作成します。
@@ -91,4 +91,4 @@ ChatGPT Plusで週21本を作り、日本時間08:00・19:00・22:00の通常文
 
 検索権限未承認の運用では [手動競合・許可済み公式フィードの週次改善](docs/manual-market-trends.md) を利用します。キーワード検索を無効のまま、自分のInsightsと手動公開URL／CSV、許可したRSS／Atom／公式JSON配信を週報へ整理し、Markdown・CSV・ChatGPT Plus向け21本作成プロンプトを生成します。新しい定期起動や有料AI APIは追加しません。
 
-最新の運用方針はAI・仕事術・お金・節約、08:00・19:00・22:00 JSTです。[日本語管理画面とGitHubでの操作手順](docs/operations-dashboard.md)を参照してください。情報源の調査状況は[調査メモ](docs/source-research.md)に記載し、利用条件未確認の配信元は自動登録していません。
+最新の運用方針は就活・転職・AI・仕事術・お金・節約、08:00・19:00・22:00 JSTです。[日本語管理画面とGitHubでの操作手順](docs/operations-dashboard.md)を参照してください。情報源の調査状況は[調査メモ](docs/source-research.md)に記載し、利用条件未確認の配信元は自動登録していません。

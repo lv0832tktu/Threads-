@@ -14,12 +14,12 @@ from threads_publisher.storage import read_json
 
 def main():
     import streamlit as st
-    st.set_page_config(page_title='Threads AI・仕事術・お金・節約',layout='wide')
+    st.set_page_config(page_title='Threads 就活・転職・AI・仕事術・お金・節約',layout='wide')
     try:require_loopback(st.get_option('server.address'))
     except ManagementError:
         st.error('外部公開は禁止です。127.0.0.1を指定して起動してください。');st.stop()
     root=Path(__file__).resolve().parents[1];os.chdir(root);operator=Operator(root)
-    st.title('Threads AI・仕事術・お金・節約 管理画面')
+    st.title('Threads 就活・転職・AI・仕事術・お金・節約 管理画面')
     st.caption('ローカル専用。API取得・投稿・Actions実行・Secrets変更は行いません。承認と予約は別の操作です。')
     def action(callback):
         try:
@@ -39,7 +39,7 @@ def main():
         st.markdown('詳しい手順は docs/operations-dashboard.md を参照してください。')
     with tabs[1]:
         st.caption('URLを登録しても開きません。確認できた数値だけ入力し、未取得は空欄にしてください。本文は保存しません。')
-        keywords=['AI','仕事術','お金','節約','ChatGPT','生成AI','AI活用','業務効率化','家計管理','新NISA','固定費','生活防衛資金']
+        keywords=['就活・転職','就活','転職','自己分析','面接対策','企業研究','キャリア形成','AI','仕事術','お金','節約','ChatGPT','生成AI','AI活用','業務効率化','家計管理','新NISA','固定費','生活防衛資金']
         with st.form('competitor'):
             url=st.text_input('Threads公開投稿URL')
             theme=st.selectbox('分析テーマ',keywords)
