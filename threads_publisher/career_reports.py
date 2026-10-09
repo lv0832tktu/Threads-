@@ -3,6 +3,8 @@ import hashlib
 import json
 import math
 import os
+import csv
+import io
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -42,6 +44,15 @@ def save_report(report, destination, output_dir):
     for target in (destination,Path(output_dir)/'latest'):
         atomic(target.with_suffix('.json'),serialized)
         atomic(target.with_suffix('.md'),markdown)
+        stream=io.StringIO(newline='')
+        writer=csv.writer(stream)
+        writer.writerow(['投稿識別子','形式','分類','テーマ','公開日時','文字数','閲覧数','いいね','返信','リポスト','引用','反応率','測定時刻'])
+        for post in report['posts']:
+            row=[post['alias'],post['post_type'],post['category'],post.get('theme','未分類'),post['published_at'],post.get('characters'),*[post['metrics'].get(name) for name in ('views','likes','replies','reposts','quotes')],post['reaction_rate'],post['metrics_as_of']]
+            writer.writerow(['取得不可' if value is None else "'"+value if isinstance(value,str) and value.startswith(('=','+','-','@')) else value for value in row])
+        atomic(target.with_suffix('.csv'),stream.getvalue())
+        prompt='# 翌週21本をChatGPT Plusで作成する指示\n\n'+markdown+'\n\nこのレポートと prompts/weekly-content-generation.md を参照し、翌週の月曜日を確認してください。AI・仕事術・お金・節約・就活・転職を組み合わせ、08:00通常文章7本、12:00画像7本、20:00ツリー7本をAsia/Tokyoで作成します。取得不可を推測せず、競合をコピーせず、公式出典と確認日を確認します。全件未承認のJSONと画像作成プロンプトを出力してください。有料AI APIは呼び出しません。\n'
+        atomic(target.with_name(target.name+'-prompt').with_suffix('.md'),prompt)
 
 
 def generate_report(history, insights_path, market_path, output_dir='reports', now=None, followers_path=None, force=False):
@@ -70,7 +81,7 @@ def generate_report(history, insights_path, market_path, output_dir='reports', n
             latest[key] = snap
     taxonomy = json.loads((Path(__file__).resolve().parents[1]/'config/keywords.json').read_text(encoding='utf-8'))
     allowed_words = {w for group in taxonomy.get('groups',[]) for w in group.get('keywords',[]) if isinstance(w,str)}
-    allowed_categories = {g.get('id') for g in taxonomy.get('groups',[])} | {g.get('theme') for g in taxonomy.get('groups',[])}
+    allowed_categories = {'AI','AI活用','仕事術','お金','節約','就活','転職'} | {g.get('id') for g in taxonomy.get('groups',[])} | {g.get('theme') for g in taxonomy.get('groups',[])}
     public_posts, reply_metrics = [], []
     reporting_jobs = list(jobs)
     existing = {(str(j['account']),str(j.get('remote_id'))) for j in reporting_jobs if j.get('status')=='published'}
@@ -151,12 +162,17 @@ def generate_report(history, insights_path, market_path, output_dir='reports', n
         except (OSError,ValueError,TypeError,KeyError,AttributeError):
             pass
     caution = '少数データでは有効性を断定しません。投稿経過時間・閲覧母数・話題の違いがあり、因果関係は未検証です。'
-    topics = ['面接で経験を説明する準備','職務経歴書の成果の整理','求人票の条件比較','転職活動の時間管理','未経験分野への学習計画','現職でのスキル棚卸し','応募前の企業情報確認','待遇交渉の情報整理','入社後の期待値確認','転職しない選択の検討']
+    topics = ['AI回答の根拠を確認する手順','AIで仕事の段取りを整理する方法','会議と資料作成の時短','固定費の確認チェックリスト','家計と生活防衛資金の整理','金融制度の公式情報確認','自己分析と企業研究の手順','面接で経験を説明する準備','職務経歴書の成果の整理','求人票の条件比較']
     market = market_summary(market_path, allowed_words, allowed_categories, public_posts, now, start, cutoff)
+    market['keyword_search']='権限未承認のため無効。手動登録と許可済み公式フィードのみを利用'
+    market['permitted_trends']=trend_summary(Path(market_path).parent/'trend-data.json' if market_path else None,allowed_words,start,cutoff,now)
     themes = [f'仮説{i+1}：{topic}を具体的な一歩に分けると読者が行動しやすい。要検証。' for i,topic in enumerate(topics)]
     themes = [{'hypothesis': theme, 'source_urls': [], 'evidence':'要検証・データ不足時の編集仮説'} for theme in themes]
     for index, comparison in enumerate(market['keyword_comparisons'][:10]):
         themes[index] = {'hypothesis':f"{comparison['keyword']}の読者課題を具体的な一歩に分解し、公開サンプルの冒頭形式・長さを参考に独自の構成を試す。",'source_urls':comparison['source_urls'][:3],'market_samples':comparison['market_samples'],'own_posts':comparison['own_posts'],'evidence':comparison['evidence']}
+    for index,trend in enumerate(market['permitted_trends'][:3]):
+        slot=9-index
+        themes[slot]={'hypothesis':trend['keyword']+'の公式情報を確認し、読者が実行できる手順を検証する','source_urls':trend['source_urls'],'evidence':'許可済み公式フィードのキーワード一致。流行・成果の保証ではない'}
     if market['keyword_comparisons']:
         topics = [c['keyword']+'の確認済み知識と実行手順' for c in market['keyword_comparisons'][:7]] + topics
         topics = topics[:10]
@@ -191,6 +207,8 @@ def market_summary(path, allowed_words, allowed_categories, own_posts, now, star
                         rows.append(dict(row,keyword=keyword))
                     elif keyword in allowed_categories:
                         rows.append(dict(row,keyword=keyword,category=keyword,category_only=True))
+                    else:
+                        rows.append(dict(row,keyword='未分類',category_only=True))
             except (OSError,ValueError,TypeError,AttributeError):
                 pass
     unique = {}
@@ -199,7 +217,7 @@ def market_summary(path, allowed_words, allowed_categories, own_posts, now, star
             word = row.get('keyword')
             url = public_url(row.get('url'))
             observed = instant(row['observed_at'])
-            if word not in allowed_words | allowed_categories or not url or observed > now or (start is not None and observed < start) or (cutoff is not None and observed >= cutoff):
+            if word not in allowed_words | allowed_categories | {'未分類'} or not url or observed > now or (start is not None and observed < start) or (cutoff is not None and observed >= cutoff):
                 continue
             key=(url,word)
             if key not in unique or observed > instant(unique[key]['observed_at']):
@@ -220,3 +238,21 @@ def market_summary(path, allowed_words, allowed_categories, own_posts, now, star
         lengths = [r['characters'] for r in samples if finite(r.get('characters'))]
         comparisons.append({'keyword':word,'market_samples':len(samples),'own_posts':len(own),'metrics':metric_summary,'characters_mean':sum(lengths)/len(lengths) if lengths else None,'hook_counts':dict(Counter(r['hook'] for r in samples if r.get('hook') in ('質問型','数字・手順型','説明・体験型'))),'manual_samples':sum(r.get('provenance')=='manual_public' for r in samples),'category_mapped_samples':sum(bool(r.get('category_only')) for r in samples),'source_urls':[public_url(r['url']) for r in samples][:10],'evidence':'探索的・小標本・投稿年齢と閲覧母数は未統制'})
     return {'status':'available' if comparisons else 'unavailable','keyword_comparisons':comparisons,'source_urls':list(dict.fromkeys(public_url(r['url']) for r in unique.values()))[:20],'note':'公開サンプルの特徴と数値のみ利用。本文は転載しない。未知の指標はゼロに置き換えない。'}
+
+
+def trend_summary(path,allowed_words,start,cutoff,now):
+    if not path or not Path(path).exists():return []
+    try:rows=json.loads(Path(path).read_text())['items']
+    except (OSError,ValueError,KeyError,TypeError):return []
+    matches=defaultdict(list)
+    for row in rows:
+        try:
+            observed=instant(row['collected_at'])
+            if not start<=observed.astimezone(JST)<cutoff or observed>now or row.get('provenance')!='permitted_official_feed':continue
+            from urllib.parse import urlsplit
+            url=urlsplit(row['url'])
+            if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment:continue
+            for word in allowed_words:
+                if word.casefold() in row['title'].casefold() and row['url'] not in matches[word]:matches[word].append(row['url'])
+        except (ValueError,TypeError,KeyError,AttributeError):continue
+    return [{'keyword':word,'source_urls':urls[:3],'samples':len(urls)} for word,urls in sorted(matches.items())][:10]

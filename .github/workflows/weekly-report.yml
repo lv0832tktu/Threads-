@@ -36,18 +36,17 @@ jobs:
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
         run: python -m threads_publisher insights --latest --weekly --private-state --backfill-metadata --persist-git
-      - name: Optional budgeted public keyword observations (GET only)
-        id: keywords
+      - name: Optional expressly permitted official feeds (no Threads search)
+        id: trends
         continue-on-error: true
-        if: vars.THREADS_KEYWORD_RESEARCH_ENABLED == 'true'
+        if: vars.THREADS_TRENDS_ENABLED == 'true'
         env:
-          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
-        run: python -m threads_publisher keywords --private-state --persist-git
+        run: python -m threads_publisher trends --private-state --persist-git
       - name: Weekly career report and unpaid Plus prompt
         env:
           THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
         run: python -m threads_publisher career-report --private-state --persist-git
       - name: Failure guidance
-        if: failure() || steps.insights.outcome == 'failure' || steps.keywords.outcome == 'failure'
+        if: failure() || steps.insights.outcome == 'failure' || steps.trends.outcome == 'failure'
         run: echo 'Operation failed. Inspect permissions and encrypted state. Do not reset keys or retry uncertain publication blindly.' >> "$GITHUB_STEP_SUMMARY"

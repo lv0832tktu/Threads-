@@ -8,7 +8,7 @@ from .operations import account_token, operation_lock, token_status, job_summary
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['check', 'publish', 'schedule', 'generate', 'insights', 'improve', 'token-status', 'import-week', 'edit-draft', 'approve-draft', 'export-approved', 'report', 'market', 'market-report', 'import-batch', 'schedule-draft', 'edit-record', 'reject-draft', 'keywords', 'import-observations', 'career-report'], nargs='?', default='check')
+    parser.add_argument('command', choices=['check', 'publish', 'schedule', 'generate', 'insights', 'improve', 'token-status', 'import-week', 'edit-draft', 'approve-draft', 'export-approved', 'report', 'market', 'market-report', 'import-batch', 'schedule-draft', 'edit-record', 'reject-draft', 'keywords', 'import-observations', 'career-report', 'import-competitors', 'trends'], nargs='?', default='check')
     parser.add_argument('--post-id', default='')
     parser.add_argument('--approved-post-id', default='')
     parser.add_argument('--posts', default='posts/posts.json')
@@ -36,12 +36,32 @@ def main():
     parser.add_argument('--changes-file', default='private/changes.json')
     parser.add_argument('--publish-datetime')
     parser.add_argument('--keywords-config', default='config/keywords.json')
+    parser.add_argument('--trend-config', default='config/trend_sources.json')
     parser.add_argument('--latest', action='store_true')
     parser.add_argument('--weekly', action='store_true')
     parser.add_argument('--resume', action='store_true')
     args = parser.parse_args()
     history = None
     try:
+        if args.command=='import-competitors':
+            from .public_sources import import_competitors
+            from .weekly import private_path
+            with operation_lock():
+                private=None
+                if args.private_state:
+                    from .private_state import PrivateState
+                    private=PrivateState();private.restore()
+                    history=History('private/history.sqlite3')
+                elif args.persist_git:
+                    raise SafeError('Manual observations require encrypted state for Git persistence')
+                elif os.path.exists('state/private-state.enc'):
+                    raise SafeError('Existing encrypted observations require --private-state when importing')
+                result=import_competitors(private_path(args.input))
+                if private:
+                    private.save()
+                    if args.persist_git:git_persist(['state/private-state.enc'])
+                print(json.dumps(result))
+            return 0
         if args.command in ('import-week','import-batch','edit-draft','edit-record','approve-draft','reject-draft','schedule-draft','export-approved','import-observations'):
             if args.persist_git:
                 raise SafeError('Private draft operations never commit to Git')
@@ -78,6 +98,11 @@ def main():
             return 0
         if args.resume and args.command != 'publish':
             raise SafeError('Resume is supported only for explicit manual publication')
+        if args.command=='trends':
+            if read_json(args.trend_config).get('enabled') is not True:
+                print(json.dumps({'disabled':True,'requests':0}))
+                return 0
+            if not args.private_state:raise SafeError('Trend observations require encrypted private storage')
         if args.command=='keywords' and read_json(args.keywords_config).get('enabled') is not True:
             print(json.dumps({'disabled':True,'requests':0}))
             return 0
@@ -150,7 +175,14 @@ def main():
                 private.save()
                 if args.persist_git:
                     git_persist(['state/private-state.enc'])
-            if args.command=='keywords':
+            if args.command=='trends':
+                from .public_sources import collect_trends
+                history=History(args.history)
+                result=collect_trends(args.trend_config,persist=save_private)
+                save_private()
+                print(json.dumps(result))
+                if result.get('errors'):raise SafeError('Some permitted feeds failed; encrypted partial results retained')
+            elif args.command=='keywords':
                 from .keyword_research import analyze_keywords
                 from .market import MarketClient
                 history=History(args.history)
@@ -170,7 +202,7 @@ def main():
                 if private: save_private()
                 if args.persist_git:
                     date=datetime.fromisoformat(result['period_end_exclusive']).date().isoformat()
-                    git_persist(['reports/latest.json','reports/latest.md',f'reports/weekly/{date}.json',f'reports/weekly/{date}.md'])
+                    git_persist(['reports/latest.json','reports/latest.md',f'reports/weekly/{date}.json',f'reports/weekly/{date}.md','reports/latest.csv','reports/latest-prompt.md',f'reports/weekly/{date}.csv',f'reports/weekly/{date}-prompt.md'])
                 print(json.dumps({'report_saved':True}))
             elif args.command in ('market','market-report'):
                 from .market import MarketClient,collect_market,market_report
