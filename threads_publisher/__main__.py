@@ -27,10 +27,12 @@ def main():
     parser.add_argument('--drafts', default='private/posts.json')
     parser.add_argument('--input', default='private/week.json')
     parser.add_argument('--start-date')
+    parser.add_argument('--text-only',action='store_true',help='Import 21 text drafts over seven days at the three configured slots')
     parser.add_argument('--text-file', default='private/edited-text.txt')
     parser.add_argument('--export', default='private/approved-posts.json')
     parser.add_argument('--report', default='private/weekly-report.md')
     parser.add_argument('--weekly-only', action='store_true')
+    parser.add_argument('--refresh-report',action='store_true',help='Explicitly regenerate the existing weekly report using local saved data')
     parser.add_argument('--market-config', default='config/market.json')
     parser.add_argument('--posting-schedule', default='config/posting_schedule.json')
     parser.add_argument('--changes-file', default='private/changes.json')
@@ -75,7 +77,7 @@ def main():
                 target=private_path(args.drafts)
                 target.parent.mkdir(parents=True,exist_ok=True)
                 if not target.exists(): atomic_json(target,{'posts':[]})
-                result={'imported':len(import_batch(private_path(args.input),target,args.posting_schedule,args.start_date))}
+                result={'imported':len(import_batch(private_path(args.input),target,args.posting_schedule,args.start_date,text_only=args.text_only))}
             elif args.command=='edit-record':
                 edit_record(private_path(args.drafts),args.post_id,read_json(private_path(args.changes_file)))
                 result={'edited':True,'approved':False}
@@ -198,7 +200,7 @@ def main():
                 from .career_reports import generate_report
                 from datetime import datetime
                 history=History(args.history)
-                result=generate_report(history,args.insights,'private/keyword-analysis.json',followers_path='private/followers.json')
+                result=generate_report(history,args.insights,'private/keyword-analysis.json',followers_path='private/followers.json',force=args.refresh_report)
                 if private: save_private()
                 if args.persist_git:
                     date=datetime.fromisoformat(result['period_end_exclusive']).date().isoformat()

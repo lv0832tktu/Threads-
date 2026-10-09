@@ -1,6 +1,15 @@
 {
   "timezone": "Asia/Tokyo",
-  "slots": {"text": "08:00", "image": "12:00", "thread": "20:00"},
-  "weekly_counts": {"text": 7, "image": 7, "thread": 7},
-  "auto_publish_enabled": false
+  "slots": {
+    "text": "08:00",
+    "image": "19:00",
+    "thread": "22:00"
+  },
+  "weekly_counts": {
+    "text": 7,
+    "image": 7,
+    "thread": 7
+  },
+  "auto_publish_enabled": false,
+  "format_mode": "flexible"
 }

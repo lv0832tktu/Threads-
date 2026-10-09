@@ -34,7 +34,7 @@ def _records(path):
         raise SafeError('Invalid JSON/CSV intake file') from None
 
 
-def import_batch(source_path, posts_path, schedule_path='config/posting_schedule.json', start_date=None, require_21=True):
+def import_batch(source_path, posts_path, schedule_path='config/posting_schedule.json', start_date=None, require_21=True, text_only=False):
     records = _records(source_path)
     if not isinstance(records, list) or not records:
         raise SafeError('Intake must contain posts')
@@ -67,21 +67,22 @@ def import_batch(source_path, posts_path, schedule_path='config/posting_schedule
         if planned:
             normalized['planned_at'] = timestamp(planned)
         else:
-            day = beginning + timedelta(days=counts[bucket])
-            normalized['planned_at'] = datetime.combine(day, slots[bucket], ZoneInfo('Asia/Tokyo')).isoformat()
+            day = beginning + timedelta(days=counts[bucket]//3 if text_only else counts[bucket])
+            clock = list(slots.values())[counts[bucket]%3] if text_only else slots[bucket]
+            normalized['planned_at'] = datetime.combine(day, clock, ZoneInfo('Asia/Tokyo')).isoformat()
         counts[bucket] += 1
         normalized['review_status'] = 'pending'
         imported.append(normalized)
-    if require_21 and counts != {'text': 7, 'image': 7, 'thread': 7}:
+    if require_21 and counts != ({'text':21,'image':0,'thread':0} if text_only else {'text':7,'image':7,'thread':7}):
         raise SafeError('Weekly batch requires 7 text, 7 image/carousel, and 7 thread drafts')
     if require_21:
         dated = {}
         for post in imported:
             when = datetime.fromisoformat(post['planned_at'])
             bucket = 'image' if post['post_type'] == 'carousel' else post['post_type']
-            if when.time() != slots[bucket]:
+            if (when.time() not in slots.values() if text_only else when.time() != slots[bucket]):
                 raise SafeError('Weekly planned times must match configured slots')
-            key = (when.date(), bucket)
+            key = (when.date(), when.time() if text_only else bucket)
             if key in dated:
                 raise SafeError('Weekly batch requires one post per category per day')
             dated[key] = True

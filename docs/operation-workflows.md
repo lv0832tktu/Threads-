@@ -14,7 +14,7 @@
 `config/automation.json` と `config/posting_schedule.json` 両方の
 `auto_publish_enabled: true`、投稿の承認と本文一致の承認ハッシュが必要です。
 新しいVariablesは未設定またはfalseを維持してください。
-予定枠は `config/posting_schedule.json` のテキスト08:00、画像12:00、連投20:00です。
+予定枠は `config/posting_schedule.json` の08:00、19:00、22:00（形式自由、初期は通常文章21本）です。
 画像とカルーセルは同じ1枠として扱い、型付き予約は `publish_status: scheduled` と設定枠の日時一致が必要で、
 予定した日本日付ごとに各枠1件を上限とします。
 pendingや失敗した予約も枠を使用するため、自動で繰り返し公開しません。
