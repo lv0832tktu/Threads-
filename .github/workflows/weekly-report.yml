@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '0 12 * * 0'
   workflow_dispatch:
+    inputs:
+      fetch_insights:
+        type: boolean
+        default: false
+        description: Approve GET-only own Insights collection before reporting
 permissions:
   contents: read
 concurrency:
@@ -10,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   operation:
-    if: vars.THREADS_WEEKLY_REPORT_ENABLED == 'true'
+    if: vars.THREADS_WEEKLY_REPORT_ENABLED == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,6 +36,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
       - name: Fetch latest own Insights (GET only)
         id: insights
+        if: github.event_name == 'schedule' || inputs.fetch_insights
         continue-on-error: true
         env:
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}

@@ -42,7 +42,8 @@ def due_posts(posts, config, now=None, account='default'):
         if 'post_type' in post and config.get('posting_schedule'):
             slots = config['posting_schedule'].get('slots', {})
             bucket = 'image' if post['post_type'] in ('image', 'carousel') else post['post_type']
-            if slots.get(bucket) != when.strftime('%H:%M') or when.second or when.microsecond:
+            valid = when.strftime('%H:%M') in slots.values() if config['posting_schedule'].get('format_mode')=='flexible' else slots.get(bucket)==when.strftime('%H:%M')
+            if not valid or when.second or when.microsecond:
                 continue
         if when <= now <= when + timedelta(hours=max_age):
             result.append(post)
@@ -90,6 +91,7 @@ def run_scheduled(client, history, posts_path, config, enabled=False, auto_enabl
             continue
         day = parse_time(instant).date().isoformat()
         bucket = 'image' if kind in ('image', 'carousel') else (kind or 'text')
+        if posting_policy and posting_policy.get('format_mode')=='flexible':bucket=parse_time(instant).strftime('%H:%M')
         typed_usage[(day, bucket)] = typed_usage.get((day, bucket), 0) + 1
     published = skipped = 0
     for post in due:
@@ -103,6 +105,7 @@ def run_scheduled(client, history, posts_path, config, enabled=False, auto_enabl
             if kind not in ('text', 'image', 'carousel', 'thread'):
                 raise SafeError('Unknown scheduled post type')
             bucket = 'image' if kind in ('image', 'carousel') else kind
+            if posting_policy and posting_policy.get('format_mode')=='flexible':bucket=parse_time(post['scheduled_at']).strftime('%H:%M')
             key = (parse_time(post['scheduled_at']).date().isoformat(), bucket)
             if typed_usage.get(key, 0) >= 1:
                 skipped += 1

@@ -28,7 +28,7 @@ class IntakeTests(unittest.TestCase):
         self.assertEqual(len(ids),21)
         records=self.load(); self.assertTrue(all(p['approved'] is False and 'scheduled_at' not in p for p in records))
         self.assertEqual(records[0]['planned_at'],'2026-10-12T08:00:00+09:00')
-        self.assertEqual(records[1]['planned_at'],'2026-10-12T12:00:00+09:00')
+        self.assertEqual(records[1]['planned_at'],'2026-10-12T19:00:00+09:00')
     def test_approval_and_scheduling_separate_edit_revokes(self):
         self.batch(); import_batch(self.source,self.posts,start_date='2026-10-12')
         with self.assertRaises(SafeError): schedule_record(self.posts,'t-0')
