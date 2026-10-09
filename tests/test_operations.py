@@ -67,3 +67,10 @@ class OperationsTests(unittest.TestCase):
     def test_api_redirect_does_not_forward_credentials(self):
         with self.assertRaises(SafeError):
             NoRedirect().redirect_request(None,None,302,'redirect',{},'https://other.invalid')
+
+    def test_report_persistence_allowlist_rejects_private_and_traversal(self):
+        for path in ('reports/../private/posts.json','reports/weekly/secrets.json','private/insights.json'):
+            with self.assertRaises(SafeError): git_persist([path])
+        with patch('threads_publisher.storage.subprocess.run',return_value=Mock(returncode=0)) as run:
+            git_persist(['reports/latest.md','reports/latest.json','reports/weekly/2026-10-11.md','reports/weekly/2026-10-11.json'])
+            self.assertEqual(run.call_count,2)

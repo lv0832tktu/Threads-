@@ -72,9 +72,19 @@ python3 -m threads_publisher check
 最後のコマンドには安全に注入された `THREADS_ACCESS_TOKEN` が必要です。コマンド行に値を直接書かないでください。
 テストは模擬APIを使い、Threadsへ実際の投稿を行いません。
 `core.py` はAPIクライアント・JSON読込・履歴・承認制御を分離しています。
-ChatGPT Plusで週21本を作り、Codexで日本時間08:00・19:00・22:00に一括予約登録する構成です。OpenAI/Groq APIへのリクエストは禁止しています。
+ChatGPT Plusで週21本を作り、日本時間08:00の通常文章、12:00の画像、20:00のツリーを各7本、一括登録できる構成です。OpenAI/Groq APIへのリクエストは禁止しています。旧テキスト専用取り込みも互換性のため保持します。
 [拡張システムの使い方](docs/automation-guide.md) に、段階ごとの設定、GitHubへの反映、Secrets・Variables、費用と制限を記載しています。
 自動公開は初期無効です。新しい下書きはprivate内、承認済み予約はGitHub Secret、永続状態は暗号文として保存します。既存投稿データと公開履歴を保持しています。
 
 競合・検索サンプルの週次分析は [公式API競合分析ガイド](docs/market-analysis.md) を参照してください。
 初期無効で、有料AI APIやスクレイピングは使いません。競合本文を保存・転載せず、未取得の数値は推測しません。
+
+指定されたAI活用・仕事術・お金・掛け合わせ等の検索語を使う手動接続確認は [keyword_search接続テスト](docs/keyword-search-check.md) を参照してください。
+既存トークンを使うGET専用テストで、結果は暗号化Artifactへ保存します。定期実行は追加しません。
+
+## 就活・転職を含む運用拡張
+
+[週21本の運用手順](docs/career-operations.md) に、JSON/CSVの取り込み、編集・承認・予約、画像準備、ツリーの安全な復旧、Secrets設定、料金と制約をまとめました。
+[投稿作成プロンプト](prompts/weekly-content-generation.md) と最新週報をChatGPT Plusへ渡し、翌週の文章と画像案を作成します。
+
+新しい予約・日次分析・日曜21:00 JST週報のActionsは初期無効です。週報は `reports/weekly/` と `reports/latest.md`・`latest.json` に公開可能な集計だけを保存し、本文や詳細履歴は暗号化します。既存の手動接続確認と投稿履歴を維持します。

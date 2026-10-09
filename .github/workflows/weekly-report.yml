@@ -1,0 +1,53 @@
+name: Threads Sunday report (disabled by default)
+on:
+  schedule:
+    - cron: '0 12 * * 0'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: threads-publication
+  cancel-in-progress: false
+jobs:
+  operation:
+    if: vars.THREADS_WEEKLY_REPORT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, Node.js 24
+        with:
+          ref: main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6, Node.js 24
+        with:
+          python-version: '3.12'
+      - name: Install encryption dependency
+        run: python -m pip install -r requirements-private.txt -r requirements-media.txt
+      - name: Offline tests
+        run: python -m unittest discover -s tests -v
+      - name: Configure private state author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Fetch latest own Insights (GET only)
+        id: insights
+        continue-on-error: true
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
+        run: python -m threads_publisher insights --latest --weekly --private-state --backfill-metadata --persist-git
+      - name: Optional budgeted public keyword observations (GET only)
+        id: keywords
+        continue-on-error: true
+        if: vars.THREADS_KEYWORD_RESEARCH_ENABLED == 'true'
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
+        run: python -m threads_publisher keywords --private-state --persist-git
+      - name: Weekly career report and unpaid Plus prompt
+        env:
+          THREADS_STATE_KEY: ${{ secrets.THREADS_STATE_KEY }}
+        run: python -m threads_publisher career-report --private-state --persist-git
+      - name: Failure guidance
+        if: failure() || steps.insights.outcome == 'failure' || steps.keywords.outcome == 'failure'
+        run: echo 'Operation failed. Inspect permissions and encrypted state. Do not reset keys or retry uncertain publication blindly.' >> "$GITHUB_STEP_SUMMARY"

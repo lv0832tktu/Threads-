@@ -1,0 +1,2 @@
+# Optional media validation; tested with the same version locally.
+Pillow==12.3.0
